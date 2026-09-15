@@ -29,6 +29,8 @@ const secondItem = {
 
 const exampleProjection = {
   years: 2,
+  savingYears: 2,
+  drawdownYears: 0,
   currency: 'USD',
   items: [
     {
@@ -38,9 +40,9 @@ const exampleProjection = {
       annualReturnRateBasisPoints: 700,
       annualContributionCents: 30000,
       yearlyBalances: [
-        { year: 0, balanceCents: 125000, contributionCents: 0, growthCents: 0 },
-        { year: 1, balanceCents: 163750, contributionCents: 30000, growthCents: 8750 },
-        { year: 2, balanceCents: 205213, contributionCents: 30000, growthCents: 11463 },
+        { year: 0, phase: 'starting', balanceCents: 125000, contributionCents: 0, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 0 },
+        { year: 1, phase: 'saving', balanceCents: 163750, contributionCents: 30000, withdrawalCents: 0, growthCents: 8750, unfundedWithdrawalCents: 0 },
+        { year: 2, phase: 'saving', balanceCents: 205213, contributionCents: 30000, withdrawalCents: 0, growthCents: 11463, unfundedWithdrawalCents: 0 },
       ],
     },
     {
@@ -50,16 +52,45 @@ const exampleProjection = {
       annualReturnRateBasisPoints: 450,
       annualContributionCents: 12000,
       yearlyBalances: [
-        { year: 0, balanceCents: 100000, contributionCents: 0, growthCents: 0 },
-        { year: 1, balanceCents: 116500, contributionCents: 12000, growthCents: 4500 },
-        { year: 2, balanceCents: 133743, contributionCents: 12000, growthCents: 5243 },
+        { year: 0, phase: 'starting', balanceCents: 100000, contributionCents: 0, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 0 },
+        { year: 1, phase: 'saving', balanceCents: 116500, contributionCents: 12000, withdrawalCents: 0, growthCents: 4500, unfundedWithdrawalCents: 0 },
+        { year: 2, phase: 'saving', balanceCents: 133743, contributionCents: 12000, withdrawalCents: 0, growthCents: 5243, unfundedWithdrawalCents: 0 },
       ],
     },
   ],
   totals: [
-    { year: 0, balanceCents: 225000, contributionCents: 0, growthCents: 0 },
-    { year: 1, balanceCents: 280250, contributionCents: 42000, growthCents: 13250 },
-    { year: 2, balanceCents: 338956, contributionCents: 42000, growthCents: 16706 },
+    { year: 0, phase: 'starting', balanceCents: 225000, contributionCents: 0, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 0 },
+    { year: 1, phase: 'saving', balanceCents: 280250, contributionCents: 42000, withdrawalCents: 0, growthCents: 13250, unfundedWithdrawalCents: 0 },
+    { year: 2, phase: 'saving', balanceCents: 338956, contributionCents: 42000, withdrawalCents: 0, growthCents: 16706, unfundedWithdrawalCents: 0 },
+  ],
+}
+
+const drawdownProjection = {
+  years: 3,
+  savingYears: 1,
+  drawdownYears: 2,
+  currency: 'USD',
+  items: [
+    {
+      id: 'item_000001',
+      name: 'Example brokerage',
+      startingAmountCents: 20000000,
+      annualReturnRateBasisPoints: 0,
+      drawdownAnnualReturnRateBasisPoints: 0,
+      annualContributionCents: 100000,
+      yearlyBalances: [
+        { year: 0, phase: 'starting', balanceCents: 20000000, contributionCents: 0, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 0 },
+        { year: 1, phase: 'saving', balanceCents: 20100000, contributionCents: 100000, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 0 },
+        { year: 2, phase: 'drawdown', balanceCents: 14100000, contributionCents: 0, withdrawalCents: 6000000, growthCents: 0, unfundedWithdrawalCents: 0 },
+        { year: 3, phase: 'drawdown', balanceCents: 7920000, contributionCents: 0, withdrawalCents: 6180000, growthCents: 0, unfundedWithdrawalCents: 0 },
+      ],
+    },
+  ],
+  totals: [
+    { year: 0, phase: 'starting', balanceCents: 20000000, contributionCents: 0, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 0 },
+    { year: 1, phase: 'saving', balanceCents: 20100000, contributionCents: 100000, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 0 },
+    { year: 2, phase: 'drawdown', balanceCents: 14100000, contributionCents: 0, withdrawalCents: 6000000, growthCents: 0, unfundedWithdrawalCents: 0 },
+    { year: 3, phase: 'drawdown', balanceCents: 7920000, contributionCents: 0, withdrawalCents: 6180000, growthCents: 0, unfundedWithdrawalCents: 0 },
   ],
 }
 
@@ -210,16 +241,19 @@ describe('Financial items app', () => {
     expect(screen.getByText('Example brokerage')).toBeInTheDocument()
   })
 
-  it('calculates a repository-backed projection grouped by year with item and combined balances', async () => {
+  it('calculates a repository-backed drawdown projection with phase and withdrawal controls', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse([exampleItem]))
-      .mockResolvedValueOnce(jsonResponse(exampleProjection))
+      .mockResolvedValueOnce(jsonResponse(drawdownProjection))
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
 
-    fireEvent.change(await screen.findByLabelText(/projection years/i), { target: { value: '2' } })
+    fireEvent.change(await screen.findByLabelText(/saving years/i), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText(/annual withdrawal/i), { target: { value: '60000.00' } })
+    fireEvent.change(screen.getByLabelText(/withdrawal inflation \(%\)/i), { target: { value: '3.00' } })
     fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
 
     expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
@@ -228,8 +262,10 @@ describe('Financial items app', () => {
 
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
       'Year',
+      'Phase',
       'Item',
       'Contribution',
+      'Withdrawal',
       'Growth',
       'Item balance',
       'Combined balance',
@@ -237,42 +273,35 @@ describe('Financial items app', () => {
 
     const bodyRows = screen.getAllByRole('row').slice(1)
     expect(bodyRows.map((row) => row.textContent)).toEqual([
-      'Year 0Example brokerage$0.00$0.00$1,250.00$2,250.00',
-      'Example savings$0.00$0.00$1,000.00',
-      'Year 1Example brokerage$300.00$87.50$1,637.50$2,802.50',
-      'Example savings$120.00$45.00$1,165.00',
-      'Year 2Example brokerage$300.00$114.63$2,052.13$3,389.56',
-      'Example savings$120.00$52.43$1,337.43',
+      'Year 0StartingExample brokerage$0.00$0.00$0.00$200,000.00$200,000.00',
+      'Year 1SavingExample brokerage$1,000.00$0.00$0.00$201,000.00$201,000.00',
+      'Year 2DrawdownExample brokerage$0.00$60,000.00$0.00$141,000.00$141,000.00',
+      'Year 3DrawdownExample brokerage$0.00$61,800.00$0.00$79,200.00$79,200.00',
     ])
 
-    const brokerageYearTwoRow = screen.getByRole('row', {
-      name: 'Year 2 Example brokerage $300.00 $114.63 $2,052.13 $3,389.56',
+    const brokerageYearThreeRow = screen.getByRole('row', {
+      name: 'Year 3 Drawdown Example brokerage $0.00 $61,800.00 $0.00 $79,200.00 $79,200.00',
     })
-    expect(within(brokerageYearTwoRow).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
-      'Year 2',
+    expect(within(brokerageYearThreeRow).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
+      'Year 3',
+      'Drawdown',
       'Example brokerage',
-      '$300.00',
-      '$114.63',
-      '$2,052.13',
-      '$3,389.56',
-    ])
-
-    const savingsYearTwoRow = screen.getByRole('row', {
-      name: 'Example savings $120.00 $52.43 $1,337.43',
-    })
-    expect(within(savingsYearTwoRow).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
-      '',
-      'Example savings',
-      '$120.00',
-      '$52.43',
-      '$1,337.43',
-      '',
+      '$0.00',
+      '$61,800.00',
+      '$0.00',
+      '$79,200.00',
+      '$79,200.00',
     ])
 
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/projections', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ years: 2 }),
+      body: JSON.stringify({
+        savingYears: 1,
+        drawdownYears: 2,
+        annualWithdrawalCents: 6000000,
+        annualWithdrawalInflationRateBasisPoints: 300,
+      }),
     })
   })
 

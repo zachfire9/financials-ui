@@ -27,7 +27,10 @@ function App() {
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [projectionYears, setProjectionYears] = useState('10')
+  const [projectionSavingYears, setProjectionSavingYears] = useState('10')
+  const [projectionDrawdownYears, setProjectionDrawdownYears] = useState('0')
+  const [projectionAnnualWithdrawal, setProjectionAnnualWithdrawal] = useState('0.00')
+  const [projectionWithdrawalInflationRate, setProjectionWithdrawalInflationRate] = useState('3.00')
   const [projection, setProjection] = useState<Projection | null>(null)
   const [isCalculatingProjection, setIsCalculatingProjection] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -176,7 +179,12 @@ function App() {
     setProjectionMessage(null)
 
     try {
-      const nextProjection = await calculateProjection({ years: Number.parseInt(projectionYears, 10) })
+      const nextProjection = await calculateProjection({
+        savingYears: Number.parseInt(projectionSavingYears, 10),
+        drawdownYears: Number.parseInt(projectionDrawdownYears || '0', 10),
+        annualWithdrawalCents: dollarsToCents(projectionAnnualWithdrawal),
+        annualWithdrawalInflationRateBasisPoints: percentToBasisPoints(projectionWithdrawalInflationRate),
+      })
       setProjection(nextProjection)
     } catch (error) {
       const message = getErrorMessage(error)
@@ -327,20 +335,51 @@ function App() {
             <div>
               <p className="eyebrow">Repository-backed projection</p>
               <h2 id="projection-heading">Projection preview</h2>
-              <p className="panel-help">Calculate whole-year totals from the current saved financial items.</p>
+              <p className="panel-help">Calculate saving and drawdown years from the current saved financial items.</p>
             </div>
           </div>
 
           <form className="projection-controls" onSubmit={handleProjectionSubmit}>
             <label>
-              Projection years
+              Saving years
               <input
                 inputMode="numeric"
-                min="1"
+                min="0"
                 max="75"
                 required
-                value={projectionYears}
-                onChange={(event) => setProjectionYears(event.target.value)}
+                value={projectionSavingYears}
+                onChange={(event) => setProjectionSavingYears(event.target.value)}
+              />
+            </label>
+            <label>
+              Drawdown years
+              <input
+                inputMode="numeric"
+                min="0"
+                max="75"
+                required
+                value={projectionDrawdownYears}
+                onChange={(event) => setProjectionDrawdownYears(event.target.value)}
+              />
+            </label>
+            <label>
+              Annual withdrawal
+              <input
+                inputMode="decimal"
+                value={projectionAnnualWithdrawal}
+                onChange={(event) => setProjectionAnnualWithdrawal(event.target.value)}
+                placeholder="60000.00"
+                required
+              />
+            </label>
+            <label>
+              Withdrawal inflation (%)
+              <input
+                inputMode="decimal"
+                value={projectionWithdrawalInflationRate}
+                onChange={(event) => setProjectionWithdrawalInflationRate(event.target.value)}
+                placeholder="3.00"
+                required
               />
             </label>
             <button type="submit" disabled={isCalculatingProjection || items.length === 0}>
@@ -378,7 +417,8 @@ function ProjectionResults({ projection }: { projection: Projection }) {
         <p className="eyebrow">Final projected total</p>
         <p className="projection-total">{formatCurrency(finalYear.balanceCents, projection.currency)}</p>
         <p>
-          Year {finalYear.year} with {formatCurrency(finalYear.contributionCents, projection.currency)} annual contributions and{' '}
+          Year {finalYear.year} with {formatCurrency(finalYear.contributionCents, projection.currency)} contributions,{' '}
+          {formatCurrency(finalYear.withdrawalCents ?? 0, projection.currency)} withdrawals, and{' '}
           {formatCurrency(finalYear.growthCents, projection.currency)} growth in the final year.
         </p>
       </div>
@@ -389,8 +429,10 @@ function ProjectionResults({ projection }: { projection: Projection }) {
           <thead>
             <tr>
               <th scope="col">Year</th>
+              <th scope="col">Phase</th>
               <th scope="col">Item</th>
               <th scope="col">Contribution</th>
+              <th scope="col">Withdrawal</th>
               <th scope="col">Growth</th>
               <th scope="col">Item balance</th>
               <th scope="col">Combined balance</th>
@@ -405,8 +447,10 @@ function ProjectionResults({ projection }: { projection: Projection }) {
               return (
                 <tr key={`${year}-${item.id || item.name}`}>
                   <td>{isFirstItemForYear ? `Year ${year}` : ''}</td>
+                  <td>{isFirstItemForYear ? formatPhase(yearlyBalance.phase) : ''}</td>
                   <td>{item.name}</td>
                   <td>{formatCurrency(yearlyBalance.contributionCents, projection.currency)}</td>
+                  <td>{formatCurrency(yearlyBalance.withdrawalCents ?? 0, projection.currency)}</td>
                   <td>{formatCurrency(yearlyBalance.growthCents, projection.currency)}</td>
                   <td>{formatCurrency(yearlyBalance.balanceCents, projection.currency)}</td>
                   <td>{isFirstItemForYear ? formatCurrency(combinedBalanceCents, projection.currency) : ''}</td>
@@ -481,6 +525,13 @@ function formatCurrency(cents: number, currency: string) {
 
 function formatRate(basisPoints: number) {
   return `${(basisPoints / 100).toFixed(2)}%`
+}
+
+function formatPhase(phase: string | undefined) {
+  if (!phase) {
+    return ''
+  }
+  return phase.charAt(0).toUpperCase() + phase.slice(1)
 }
 
 function getErrorMessage(error: unknown) {

@@ -20,14 +20,23 @@ export type FinancialItemPayload = {
 }
 
 export type ProjectionRequest = {
-  years: number
+  years?: number
+  savingYears?: number
+  drawdownYears?: number
+  annualWithdrawalCents?: number
+  annualWithdrawalInflationRateBasisPoints?: number
 }
+
+export type ProjectionPhase = 'starting' | 'saving' | 'drawdown'
 
 export type YearlyBalance = {
   year: number
+  phase?: ProjectionPhase
   balanceCents: number
   contributionCents: number
+  withdrawalCents?: number
   growthCents: number
+  unfundedWithdrawalCents?: number
 }
 
 export type ProjectedItem = {
@@ -35,12 +44,15 @@ export type ProjectedItem = {
   name: string
   startingAmountCents: number
   annualReturnRateBasisPoints: number
+  drawdownAnnualReturnRateBasisPoints?: number
   annualContributionCents: number
   yearlyBalances: YearlyBalance[]
 }
 
 export type Projection = {
   years: number
+  savingYears?: number
+  drawdownYears?: number
   currency: string
   items: ProjectedItem[]
   totals: YearlyBalance[]
