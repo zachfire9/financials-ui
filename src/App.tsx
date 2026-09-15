@@ -362,6 +362,14 @@ function App() {
 
 function ProjectionResults({ projection }: { projection: Projection }) {
   const finalYear = projection.totals[projection.totals.length - 1]
+  const rows = projection.totals.flatMap((total) =>
+    projection.items.map((item) => ({
+      combinedBalanceCents: total.balanceCents,
+      item,
+      yearlyBalance: item.yearlyBalances.find((yearlyBalance) => yearlyBalance.year === total.year),
+      year: total.year,
+    })),
+  )
 
   return (
     <div className="projection-results">
@@ -376,28 +384,34 @@ function ProjectionResults({ projection }: { projection: Projection }) {
 
       <div className="table-scroll">
         <table>
-          <caption>Projection by item and year</caption>
+          <caption>Projection by year and item</caption>
           <thead>
             <tr>
               <th scope="col">Year</th>
               <th scope="col">Item</th>
               <th scope="col">Contribution</th>
               <th scope="col">Growth</th>
-              <th scope="col">Balance</th>
+              <th scope="col">Item balance</th>
+              <th scope="col">Combined balance</th>
             </tr>
           </thead>
           <tbody>
-            {projection.items.flatMap((item) =>
-              item.yearlyBalances.map((yearlyBalance) => (
-                <tr key={`${item.id || item.name}-${yearlyBalance.year}`}>
-                  <td>Year {yearlyBalance.year}</td>
+            {rows.map(({ combinedBalanceCents, item, yearlyBalance, year }) => {
+              if (!yearlyBalance) {
+                return null
+              }
+
+              return (
+                <tr key={`${year}-${item.id || item.name}`}>
+                  <td>Year {year}</td>
                   <td>{item.name}</td>
                   <td>{formatCurrency(yearlyBalance.contributionCents, projection.currency)}</td>
                   <td>{formatCurrency(yearlyBalance.growthCents, projection.currency)}</td>
                   <td>{formatCurrency(yearlyBalance.balanceCents, projection.currency)}</td>
+                  <td>{formatCurrency(combinedBalanceCents, projection.currency)}</td>
                 </tr>
-              )),
-            )}
+              )
+            })}
           </tbody>
         </table>
       </div>

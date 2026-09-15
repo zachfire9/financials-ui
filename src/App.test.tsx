@@ -210,7 +210,7 @@ describe('Financial items app', () => {
     expect(screen.getByText('Example brokerage')).toBeInTheDocument()
   })
 
-  it('calculates a repository-backed projection and renders each item per year with balance last', async () => {
+  it('calculates a repository-backed projection grouped by year with item and combined balances', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse([exampleItem]))
@@ -222,7 +222,7 @@ describe('Financial items app', () => {
     fireEvent.change(await screen.findByLabelText(/projection years/i), { target: { value: '2' } })
     fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
 
-    expect(await screen.findByText('Projection by item and year')).toBeInTheDocument()
+    expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
     expect(screen.queryByText('Projection totals')).not.toBeInTheDocument()
     expect(screen.queryByText(/example brokerage ends at/i)).not.toBeInTheDocument()
 
@@ -231,11 +231,22 @@ describe('Financial items app', () => {
       'Item',
       'Contribution',
       'Growth',
-      'Balance',
+      'Item balance',
+      'Combined balance',
+    ])
+
+    const bodyRows = screen.getAllByRole('row').slice(1)
+    expect(bodyRows.map((row) => row.textContent)).toEqual([
+      'Year 0Example brokerage$0.00$0.00$1,250.00$2,250.00',
+      'Year 0Example savings$0.00$0.00$1,000.00$2,250.00',
+      'Year 1Example brokerage$300.00$87.50$1,637.50$2,802.50',
+      'Year 1Example savings$120.00$45.00$1,165.00$2,802.50',
+      'Year 2Example brokerage$300.00$114.63$2,052.13$3,389.56',
+      'Year 2Example savings$120.00$52.43$1,337.43$3,389.56',
     ])
 
     const brokerageYearTwoRow = screen.getByRole('row', {
-      name: 'Year 2 Example brokerage $300.00 $114.63 $2,052.13',
+      name: 'Year 2 Example brokerage $300.00 $114.63 $2,052.13 $3,389.56',
     })
     expect(within(brokerageYearTwoRow).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
       'Year 2',
@@ -243,13 +254,9 @@ describe('Financial items app', () => {
       '$300.00',
       '$114.63',
       '$2,052.13',
+      '$3,389.56',
     ])
 
-    expect(
-      screen.getByRole('row', {
-        name: 'Year 2 Example savings $120.00 $52.43 $1,337.43',
-      }),
-    ).toBeInTheDocument()
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/projections', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -268,12 +275,12 @@ describe('Financial items app', () => {
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: /calculate projection/i }))
-    expect(await screen.findByText('Projection by item and year')).toBeInTheDocument()
+    expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
 
     expect(await screen.findByText(/projection is updating/i)).toBeInTheDocument()
-    expect(screen.getByText('$3,389.56')).toBeInTheDocument()
+    expect(screen.getAllByText('$3,389.56').length).toBeGreaterThan(0)
   })
 })
 
