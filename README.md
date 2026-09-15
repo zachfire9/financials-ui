@@ -102,7 +102,7 @@ The app can also exercise the existing `POST /projections` API contract through 
 
 - Enter a whole-year projection window between the API-supported `1` and `75` year range.
 - Calculate from the current repository-backed financial items by sending only `{ "years": <value> }`.
-- Review a year-grouped table that lists each item with contribution, growth, item balance, and combined balance details.
+- Review a year-grouped table that lists each item with contribution, growth, and item balance details while showing each year and combined balance once per year.
 - Keep the aggregate final projected total visible above the table.
 - Keep the last successful projection visible if a recalculation fails transiently.
 

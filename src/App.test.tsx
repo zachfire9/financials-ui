@@ -238,11 +238,11 @@ describe('Financial items app', () => {
     const bodyRows = screen.getAllByRole('row').slice(1)
     expect(bodyRows.map((row) => row.textContent)).toEqual([
       'Year 0Example brokerage$0.00$0.00$1,250.00$2,250.00',
-      'Year 0Example savings$0.00$0.00$1,000.00$2,250.00',
+      'Example savings$0.00$0.00$1,000.00',
       'Year 1Example brokerage$300.00$87.50$1,637.50$2,802.50',
-      'Year 1Example savings$120.00$45.00$1,165.00$2,802.50',
+      'Example savings$120.00$45.00$1,165.00',
       'Year 2Example brokerage$300.00$114.63$2,052.13$3,389.56',
-      'Year 2Example savings$120.00$52.43$1,337.43$3,389.56',
+      'Example savings$120.00$52.43$1,337.43',
     ])
 
     const brokerageYearTwoRow = screen.getByRole('row', {
@@ -255,6 +255,18 @@ describe('Financial items app', () => {
       '$114.63',
       '$2,052.13',
       '$3,389.56',
+    ])
+
+    const savingsYearTwoRow = screen.getByRole('row', {
+      name: 'Example savings $120.00 $52.43 $1,337.43',
+    })
+    expect(within(savingsYearTwoRow).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
+      '',
+      'Example savings',
+      '$120.00',
+      '$52.43',
+      '$1,337.43',
+      '',
     ])
 
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/projections', {

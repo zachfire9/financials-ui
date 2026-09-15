@@ -363,8 +363,9 @@ function App() {
 function ProjectionResults({ projection }: { projection: Projection }) {
   const finalYear = projection.totals[projection.totals.length - 1]
   const rows = projection.totals.flatMap((total) =>
-    projection.items.map((item) => ({
+    projection.items.map((item, itemIndex) => ({
       combinedBalanceCents: total.balanceCents,
+      isFirstItemForYear: itemIndex === 0,
       item,
       yearlyBalance: item.yearlyBalances.find((yearlyBalance) => yearlyBalance.year === total.year),
       year: total.year,
@@ -396,19 +397,19 @@ function ProjectionResults({ projection }: { projection: Projection }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ combinedBalanceCents, item, yearlyBalance, year }) => {
+            {rows.map(({ combinedBalanceCents, isFirstItemForYear, item, yearlyBalance, year }) => {
               if (!yearlyBalance) {
                 return null
               }
 
               return (
                 <tr key={`${year}-${item.id || item.name}`}>
-                  <td>Year {year}</td>
+                  <td>{isFirstItemForYear ? `Year ${year}` : ''}</td>
                   <td>{item.name}</td>
                   <td>{formatCurrency(yearlyBalance.contributionCents, projection.currency)}</td>
                   <td>{formatCurrency(yearlyBalance.growthCents, projection.currency)}</td>
                   <td>{formatCurrency(yearlyBalance.balanceCents, projection.currency)}</td>
-                  <td>{formatCurrency(combinedBalanceCents, projection.currency)}</td>
+                  <td>{isFirstItemForYear ? formatCurrency(combinedBalanceCents, projection.currency) : ''}</td>
                 </tr>
               )
             })}
