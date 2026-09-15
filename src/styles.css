@@ -65,23 +65,17 @@ label {
 }
 
 .app-shell {
-  display: grid;
-  gap: 1.5rem;
   min-height: 100vh;
   padding: 2rem;
 }
 
-.hero-card,
 .item-form,
 .items-panel {
   border: 1px solid rgba(39, 58, 92, 0.12);
   border-radius: 28px;
   background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
   box-shadow: 0 24px 80px rgba(37, 57, 95, 0.12);
-}
-
-.hero-card {
-  padding: clamp(1.75rem, 4vw, 3rem);
+  padding: clamp(1.25rem, 3vw, 2rem);
 }
 
 .eyebrow {
@@ -101,10 +95,6 @@ h3 {
   margin: 0;
 }
 
-h1 {
-  font-size: clamp(2.35rem, 7vw, 5rem);
-}
-
 h2 {
   font-size: clamp(1.25rem, 3vw, 1.8rem);
 }
@@ -113,23 +103,11 @@ h3 {
   font-size: 1.05rem;
 }
 
-.lede {
-  max-width: 720px;
-  margin: 1rem 0 0;
-  color: #46556f;
-  font-size: clamp(1.05rem, 2vw, 1.3rem);
-}
-
 .content-grid {
   align-items: start;
   display: grid;
   gap: 1.5rem;
   grid-template-columns: minmax(280px, 420px) 1fr;
-}
-
-.item-form,
-.items-panel {
-  padding: clamp(1.25rem, 3vw, 2rem);
 }
 
 .item-form {
@@ -145,7 +123,8 @@ h3 {
 
 .form-actions,
 .item-actions,
-.panel-heading {
+.panel-heading,
+.item-summary {
   align-items: center;
   display: flex;
   gap: 0.75rem;
@@ -154,6 +133,11 @@ h3 {
 .panel-heading {
   justify-content: space-between;
   margin-bottom: 1.25rem;
+}
+
+.panel-help {
+  color: #526174;
+  margin: 0.4rem 0 0;
 }
 
 .item-list {
@@ -168,10 +152,33 @@ h3 {
   align-items: center;
   border: 1px solid #e2e8f0;
   border-radius: 20px;
+  cursor: grab;
   display: flex;
   gap: 1rem;
   justify-content: space-between;
   padding: 1rem;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.item-card.dragging {
+  border-color: #3563eb;
+  box-shadow: 0 12px 28px rgba(53, 99, 235, 0.18);
+  opacity: 0.72;
+}
+
+.item-summary {
+  min-width: 0;
+}
+
+.drag-handle {
+  color: #94a3b8;
+  flex: 0 0 auto;
+  font-weight: 900;
+  letter-spacing: -0.2em;
+  line-height: 1;
 }
 
 .item-card p,
@@ -220,5 +227,9 @@ h3 {
   .panel-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .item-summary {
+    align-items: flex-start;
   }
 }

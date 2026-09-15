@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { DragEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import {
   createFinancialItem,
   deleteFinancialItem,
@@ -14,7 +14,6 @@ const emptyForm = {
   currency: 'USD',
   annualReturnRate: '',
   annualContribution: '',
-  sortOrder: '0',
 }
 
 type FormState = typeof emptyForm
@@ -23,6 +22,7 @@ function App() {
   const [items, setItems] = useState<FinancialItem[]>([])
   const [form, setForm] = useState<FormState>(emptyForm)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -44,7 +44,7 @@ function App() {
 
     try {
       const nextItems = await listFinancialItems()
-      setItems(nextItems)
+      setItems(nextItems.sort(compareFinancialItems))
     } catch (error) {
       const message = getErrorMessage(error)
       if (items.length > 0) {
@@ -64,14 +64,18 @@ function App() {
     setStaleMessage(null)
 
     try {
-      const payload = formToPayload(form)
-      if (editingItemId) {
-        const updatedItem = await updateFinancialItem(editingItemId, payload)
+      if (editingItemId && editingItem) {
+        const updatedItem = await updateFinancialItem(
+          editingItemId,
+          formToPayload(form, editingItem.sortOrder),
+        )
         setItems((currentItems) =>
-          currentItems.map((item) => (item.id === updatedItem.id ? updatedItem : item)),
+          currentItems
+            .map((item) => (item.id === updatedItem.id ? updatedItem : item))
+            .sort(compareFinancialItems),
         )
       } else {
-        const createdItem = await createFinancialItem(payload)
+        const createdItem = await createFinancialItem(formToPayload(form, nextSortOrder(items)))
         setItems((currentItems) => [...currentItems, createdItem].sort(compareFinancialItems))
       }
       resetForm()
@@ -105,7 +109,6 @@ function App() {
       currency: item.currency,
       annualReturnRate: basisPointsToPercentInput(item.annualReturnRateBasisPoints),
       annualContribution: centsToDollarsInput(item.annualContributionCents),
-      sortOrder: String(item.sortOrder),
     })
   }
 
@@ -114,16 +117,54 @@ function App() {
     setForm(emptyForm)
   }
 
+  function handleDragStart(item: FinancialItem) {
+    setDraggingItemId(item.id)
+  }
+
+  function handleDragOver(event: DragEvent<HTMLLIElement>) {
+    event.preventDefault()
+  }
+
+  function handleDrop(targetItem: FinancialItem) {
+    if (!draggingItemId || draggingItemId === targetItem.id) {
+      setDraggingItemId(null)
+      return
+    }
+
+    const previousItems = items
+    const draggedItem = items.find((item) => item.id === draggingItemId)
+    if (!draggedItem) {
+      setDraggingItemId(null)
+      return
+    }
+
+    const withoutDraggedItem = items.filter((item) => item.id !== draggingItemId)
+    const targetIndex = withoutDraggedItem.findIndex((item) => item.id === targetItem.id)
+    const nextItems = [...withoutDraggedItem]
+    nextItems.splice(targetIndex, 0, draggedItem)
+    const renumberedItems = nextItems.map((item, index) => ({ ...item, sortOrder: index }))
+
+    setDraggingItemId(null)
+    setItems(renumberedItems)
+    void persistReorderedItems(renumberedItems, previousItems)
+  }
+
+  async function persistReorderedItems(nextItems: FinancialItem[], previousItems: FinancialItem[]) {
+    setErrorMessage(null)
+    setStaleMessage(null)
+
+    try {
+      for (const item of nextItems) {
+        await updateFinancialItem(item.id, itemToPayload(item))
+      }
+    } catch (error) {
+      setItems(previousItems)
+      setErrorMessage(`Could not save the new item order. ${getErrorMessage(error)}`)
+    }
+  }
+
   return (
     <main className="app-shell">
-      <section className="hero-card" aria-labelledby="app-title">
-        <p className="eyebrow">Step 8: Financial items CRUD</p>
-        <h1 id="app-title">Financials Planner</h1>
-        <p className="lede">
-          Manage fake/example financial planning inputs through the local Financials API.
-        </p>
-      </section>
-
       <section className="content-grid" aria-label="Financial items workspace">
         <form className="item-form" onSubmit={handleSubmit}>
           <div>
@@ -148,7 +189,7 @@ function App() {
                 inputMode="decimal"
                 value={form.amount}
                 onChange={(event) => setForm({ ...form, amount: event.target.value })}
-                placeholder="12500"
+                placeholder="10000.00"
                 required
               />
             </label>
@@ -165,12 +206,12 @@ function App() {
 
           <div className="form-row">
             <label>
-              Annual return
+              Annual return (%)
               <input
                 inputMode="decimal"
                 value={form.annualReturnRate}
                 onChange={(event) => setForm({ ...form, annualReturnRate: event.target.value })}
-                placeholder="7"
+                placeholder="7.00"
                 required
               />
             </label>
@@ -180,21 +221,11 @@ function App() {
                 inputMode="decimal"
                 value={form.annualContribution}
                 onChange={(event) => setForm({ ...form, annualContribution: event.target.value })}
-                placeholder="3000"
+                placeholder="3000.00"
                 required
               />
             </label>
           </div>
-
-          <label>
-            Sort order
-            <input
-              inputMode="numeric"
-              value={form.sortOrder}
-              onChange={(event) => setForm({ ...form, sortOrder: event.target.value })}
-              required
-            />
-          </label>
 
           {errorMessage ? <p className="status-message error">{errorMessage}</p> : null}
 
@@ -215,6 +246,7 @@ function App() {
             <div>
               <p className="eyebrow">API-backed list</p>
               <h2 id="items-heading">Financial items</h2>
+              {items.length > 1 ? <p className="panel-help">Drag items to reorder them.</p> : null}
             </div>
             <button type="button" className="secondary" onClick={() => void loadItems()}>
               Refresh
@@ -230,13 +262,25 @@ function App() {
 
           <ul className="item-list">
             {items.map((item) => (
-              <li key={item.id} className="item-card">
-                <div>
-                  <h3>{item.name}</h3>
-                  <p>
-                    {formatCurrency(item.amountCents, item.currency)} · {formatRate(item.annualReturnRateBasisPoints)} return ·{' '}
-                    {formatCurrency(item.annualContributionCents, item.currency)} annual contribution
-                  </p>
+              <li
+                key={item.id}
+                className={item.id === draggingItemId ? 'item-card dragging' : 'item-card'}
+                draggable
+                onDragStart={() => handleDragStart(item)}
+                onDragOver={handleDragOver}
+                onDrop={() => handleDrop(item)}
+              >
+                <div className="item-summary">
+                  <span className="drag-handle" aria-hidden="true">
+                    ⋮⋮
+                  </span>
+                  <div>
+                    <h3>{item.name}</h3>
+                    <p>
+                      {formatCurrency(item.amountCents, item.currency)} · {formatRate(item.annualReturnRateBasisPoints)} return ·{' '}
+                      {formatCurrency(item.annualContributionCents, item.currency)} annual contribution
+                    </p>
+                  </div>
                 </div>
                 <div className="item-actions">
                   <button type="button" className="secondary" onClick={() => startEditing(item)}>
@@ -255,14 +299,25 @@ function App() {
   )
 }
 
-function formToPayload(form: FormState): FinancialItemPayload {
+function formToPayload(form: FormState, sortOrder: number): FinancialItemPayload {
   return {
     name: form.name.trim(),
     amountCents: dollarsToCents(form.amount),
     currency: form.currency.trim().toUpperCase(),
     annualReturnRateBasisPoints: percentToBasisPoints(form.annualReturnRate),
     annualContributionCents: dollarsToCents(form.annualContribution),
-    sortOrder: Number.parseInt(form.sortOrder, 10),
+    sortOrder,
+  }
+}
+
+function itemToPayload(item: FinancialItem): FinancialItemPayload {
+  return {
+    name: item.name,
+    amountCents: item.amountCents,
+    currency: item.currency,
+    annualReturnRateBasisPoints: item.annualReturnRateBasisPoints,
+    annualContributionCents: item.annualContributionCents,
+    sortOrder: item.sortOrder,
   }
 }
 
@@ -273,12 +328,19 @@ function compareFinancialItems(left: FinancialItem, right: FinancialItem) {
   return left.id.localeCompare(right.id)
 }
 
+function nextSortOrder(items: FinancialItem[]) {
+  if (items.length === 0) {
+    return 0
+  }
+  return Math.max(...items.map((item) => item.sortOrder)) + 1
+}
+
 function dollarsToCents(value: string) {
   return Math.round(Number.parseFloat(value || '0') * 100)
 }
 
 function centsToDollarsInput(value: number) {
-  return (value / 100).toFixed(2).replace(/\.00$/, '')
+  return (value / 100).toFixed(2)
 }
 
 function percentToBasisPoints(value: string) {
@@ -286,7 +348,7 @@ function percentToBasisPoints(value: string) {
 }
 
 function basisPointsToPercentInput(value: number) {
-  return (value / 100).toFixed(2).replace(/\.00$/, '')
+  return (value / 100).toFixed(2)
 }
 
 function formatCurrency(cents: number, currency: string) {

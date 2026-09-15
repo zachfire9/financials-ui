@@ -15,6 +15,18 @@ const exampleItem = {
   updatedAt: '2026-01-01T00:00:00Z',
 }
 
+const secondItem = {
+  id: 'item_000002',
+  name: 'Example savings',
+  amountCents: 1000000,
+  currency: 'USD',
+  annualReturnRateBasisPoints: 450,
+  annualContributionCents: 120000,
+  sortOrder: 2,
+  createdAt: '2026-01-02T00:00:00Z',
+  updatedAt: '2026-01-02T00:00:00Z',
+}
+
 describe('Financial items app', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -24,13 +36,14 @@ describe('Financial items app', () => {
     cleanup()
   })
 
-  it('loads and renders financial items from the API', async () => {
+  it('loads financial items without the intro hero container', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse([exampleItem]))
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
 
-    expect(screen.getByRole('heading', { name: /financials planner/i })).toBeInTheDocument()
+    expect(screen.queryByText(/manage fake\/example financial planning inputs/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/step 8: financial items crud/i)).not.toBeInTheDocument()
     expect(await screen.findByText('Example brokerage')).toBeInTheDocument()
     const itemCard = screen.getByRole('listitem')
     expect(within(itemCard).getByText(/\$12,500\.00/)).toBeInTheDocument()
@@ -38,8 +51,21 @@ describe('Financial items app', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/financial-items', undefined)
   })
 
+  it('shows human dollar inputs and percent labeling when editing API-backed cents values', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse([secondItem]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /edit example savings/i }))
+
+    expect(screen.getByLabelText(/current amount/i)).toHaveValue('10000.00')
+    expect(screen.getByLabelText(/annual return \(%\)/i)).toHaveValue('4.50')
+    expect(screen.queryByLabelText(/sort order/i)).not.toBeInTheDocument()
+  })
+
   it('creates a financial item with the form payload expected by the API', async () => {
-    const createdItem = { ...exampleItem, id: 'item_000002', name: 'Example savings' }
+    const createdItem = { ...exampleItem, id: 'item_000003', name: 'Example emergency fund', sortOrder: 0 }
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse([]))
@@ -48,24 +74,23 @@ describe('Financial items app', () => {
 
     render(<App />)
 
-    fireEvent.change(await screen.findByLabelText(/name/i), { target: { value: 'Example savings' } })
-    fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '2500' } })
-    fireEvent.change(screen.getByLabelText(/annual return/i), { target: { value: '5.5' } })
-    fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '1200' } })
-    fireEvent.change(screen.getByLabelText(/sort order/i), { target: { value: '2' } })
+    fireEvent.change(await screen.findByLabelText(/name/i), { target: { value: 'Example emergency fund' } })
+    fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '2500.00' } })
+    fireEvent.change(screen.getByLabelText(/annual return \(%\)/i), { target: { value: '5.5' } })
+    fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '1200.00' } })
     fireEvent.click(screen.getByRole('button', { name: /add item/i }))
 
-    await screen.findByText('Example savings')
+    await screen.findByText('Example emergency fund')
     expect(fetchMock).toHaveBeenLastCalledWith('/api/financial-items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: 'Example savings',
+        name: 'Example emergency fund',
         amountCents: 250000,
         currency: 'USD',
         annualReturnRateBasisPoints: 550,
         annualContributionCents: 120000,
-        sortOrder: 2,
+        sortOrder: 0,
       }),
     })
   })
@@ -83,7 +108,7 @@ describe('Financial items app', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /edit example brokerage/i }))
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Example down payment' } })
-    fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '15000' } })
+    fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '15000.00' } })
     fireEvent.click(screen.getByRole('button', { name: /save item/i }))
 
     await screen.findByText('Example down payment')
@@ -94,6 +119,43 @@ describe('Financial items app', () => {
     await waitFor(() => expect(screen.queryByText('Example down payment')).not.toBeInTheDocument())
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/financial-items/item_000001', { method: 'DELETE' })
     expect(screen.getByText(/no financial items yet/i)).toBeInTheDocument()
+  })
+
+  it('reorders existing items by dragging and dropping item cards', async () => {
+    const reorderedFirst = { ...secondItem, sortOrder: 0 }
+    const reorderedSecond = { ...exampleItem, sortOrder: 1 }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([exampleItem, secondItem]))
+      .mockResolvedValueOnce(jsonResponse(reorderedFirst))
+      .mockResolvedValueOnce(jsonResponse(reorderedSecond))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    const brokerage = await screen.findByText('Example brokerage')
+    const savings = screen.getByText('Example savings')
+    fireEvent.dragStart(savings.closest('li')!)
+    fireEvent.dragOver(brokerage.closest('li')!)
+    fireEvent.drop(brokerage.closest('li')!)
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/financial-items/item_000002',
+      expect.objectContaining({
+        method: 'PUT',
+        body: expect.stringContaining('"sortOrder":0'),
+      }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/financial-items/item_000001',
+      expect.objectContaining({
+        method: 'PUT',
+        body: expect.stringContaining('"sortOrder":1'),
+      }),
+    )
   })
 
   it('keeps the last successful list visible when a refresh fails', async () => {
