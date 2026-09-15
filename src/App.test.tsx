@@ -27,6 +27,30 @@ const secondItem = {
   updatedAt: '2026-01-02T00:00:00Z',
 }
 
+const exampleProjection = {
+  years: 2,
+  currency: 'USD',
+  items: [
+    {
+      id: 'item_000001',
+      name: 'Example brokerage',
+      startingAmountCents: 125000,
+      annualReturnRateBasisPoints: 700,
+      annualContributionCents: 30000,
+      yearlyBalances: [
+        { year: 0, balanceCents: 125000, contributionCents: 0, growthCents: 0 },
+        { year: 1, balanceCents: 163750, contributionCents: 30000, growthCents: 8750 },
+        { year: 2, balanceCents: 205213, contributionCents: 30000, growthCents: 11463 },
+      ],
+    },
+  ],
+  totals: [
+    { year: 0, balanceCents: 125000, contributionCents: 0, growthCents: 0 },
+    { year: 1, balanceCents: 163750, contributionCents: 30000, growthCents: 8750 },
+    { year: 2, balanceCents: 205213, contributionCents: 30000, growthCents: 11463 },
+  ],
+}
+
 describe('Financial items app', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -172,6 +196,48 @@ describe('Financial items app', () => {
 
     expect(await screen.findByText(/data is updating/i)).toBeInTheDocument()
     expect(screen.getByText('Example brokerage')).toBeInTheDocument()
+  })
+
+  it('calculates a repository-backed projection and renders total and item tables', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([exampleItem]))
+      .mockResolvedValueOnce(jsonResponse(exampleProjection))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.change(await screen.findByLabelText(/projection years/i), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+
+    expect(await screen.findByText('Projection totals')).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: 'Year 2' })).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: '$2,052.13' })).toBeInTheDocument()
+    expect(screen.getByText(/example brokerage ends at \$2,052\.13/i)).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/projections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ years: 2 }),
+    })
+  })
+
+  it('keeps the last successful projection visible when recalculation fails', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([exampleItem]))
+      .mockResolvedValueOnce(jsonResponse(exampleProjection))
+      .mockResolvedValueOnce(jsonResponse({ error: 'projection service unavailable' }, 500))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /calculate projection/i }))
+    expect(await screen.findByText('Projection totals')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+
+    expect(await screen.findByText(/projection is updating/i)).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: '$2,052.13' })).toBeInTheDocument()
   })
 })
 
