@@ -19,6 +19,33 @@ export type FinancialItemPayload = {
   sortOrder: number
 }
 
+export type ProjectionRequest = {
+  years: number
+}
+
+export type YearlyBalance = {
+  year: number
+  balanceCents: number
+  contributionCents: number
+  growthCents: number
+}
+
+export type ProjectedItem = {
+  id: string
+  name: string
+  startingAmountCents: number
+  annualReturnRateBasisPoints: number
+  annualContributionCents: number
+  yearlyBalances: YearlyBalance[]
+}
+
+export type Projection = {
+  years: number
+  currency: string
+  items: ProjectedItem[]
+  totals: YearlyBalance[]
+}
+
 type ApiErrorBody = {
   error?: string
 }
@@ -47,6 +74,14 @@ export async function updateFinancialItem(id: string, payload: FinancialItemPayl
 
 export async function deleteFinancialItem(id: string): Promise<void> {
   await request<void>(`/financial-items/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export async function calculateProjection(payload: ProjectionRequest): Promise<Projection> {
+  return request<Projection>('/projections', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

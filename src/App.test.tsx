@@ -27,6 +27,42 @@ const secondItem = {
   updatedAt: '2026-01-02T00:00:00Z',
 }
 
+const exampleProjection = {
+  years: 2,
+  currency: 'USD',
+  items: [
+    {
+      id: 'item_000001',
+      name: 'Example brokerage',
+      startingAmountCents: 125000,
+      annualReturnRateBasisPoints: 700,
+      annualContributionCents: 30000,
+      yearlyBalances: [
+        { year: 0, balanceCents: 125000, contributionCents: 0, growthCents: 0 },
+        { year: 1, balanceCents: 163750, contributionCents: 30000, growthCents: 8750 },
+        { year: 2, balanceCents: 205213, contributionCents: 30000, growthCents: 11463 },
+      ],
+    },
+    {
+      id: 'item_000002',
+      name: 'Example savings',
+      startingAmountCents: 100000,
+      annualReturnRateBasisPoints: 450,
+      annualContributionCents: 12000,
+      yearlyBalances: [
+        { year: 0, balanceCents: 100000, contributionCents: 0, growthCents: 0 },
+        { year: 1, balanceCents: 116500, contributionCents: 12000, growthCents: 4500 },
+        { year: 2, balanceCents: 133743, contributionCents: 12000, growthCents: 5243 },
+      ],
+    },
+  ],
+  totals: [
+    { year: 0, balanceCents: 225000, contributionCents: 0, growthCents: 0 },
+    { year: 1, balanceCents: 280250, contributionCents: 42000, growthCents: 13250 },
+    { year: 2, balanceCents: 338956, contributionCents: 42000, growthCents: 16706 },
+  ],
+}
+
 describe('Financial items app', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -172,6 +208,91 @@ describe('Financial items app', () => {
 
     expect(await screen.findByText(/data is updating/i)).toBeInTheDocument()
     expect(screen.getByText('Example brokerage')).toBeInTheDocument()
+  })
+
+  it('calculates a repository-backed projection grouped by year with item and combined balances', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([exampleItem]))
+      .mockResolvedValueOnce(jsonResponse(exampleProjection))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.change(await screen.findByLabelText(/projection years/i), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+
+    expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
+    expect(screen.queryByText('Projection totals')).not.toBeInTheDocument()
+    expect(screen.queryByText(/example brokerage ends at/i)).not.toBeInTheDocument()
+
+    expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      'Year',
+      'Item',
+      'Contribution',
+      'Growth',
+      'Item balance',
+      'Combined balance',
+    ])
+
+    const bodyRows = screen.getAllByRole('row').slice(1)
+    expect(bodyRows.map((row) => row.textContent)).toEqual([
+      'Year 0Example brokerage$0.00$0.00$1,250.00$2,250.00',
+      'Example savings$0.00$0.00$1,000.00',
+      'Year 1Example brokerage$300.00$87.50$1,637.50$2,802.50',
+      'Example savings$120.00$45.00$1,165.00',
+      'Year 2Example brokerage$300.00$114.63$2,052.13$3,389.56',
+      'Example savings$120.00$52.43$1,337.43',
+    ])
+
+    const brokerageYearTwoRow = screen.getByRole('row', {
+      name: 'Year 2 Example brokerage $300.00 $114.63 $2,052.13 $3,389.56',
+    })
+    expect(within(brokerageYearTwoRow).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
+      'Year 2',
+      'Example brokerage',
+      '$300.00',
+      '$114.63',
+      '$2,052.13',
+      '$3,389.56',
+    ])
+
+    const savingsYearTwoRow = screen.getByRole('row', {
+      name: 'Example savings $120.00 $52.43 $1,337.43',
+    })
+    expect(within(savingsYearTwoRow).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
+      '',
+      'Example savings',
+      '$120.00',
+      '$52.43',
+      '$1,337.43',
+      '',
+    ])
+
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/projections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ years: 2 }),
+    })
+  })
+
+  it('keeps the last successful projection visible when recalculation fails', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([exampleItem]))
+      .mockResolvedValueOnce(jsonResponse(exampleProjection))
+      .mockResolvedValueOnce(jsonResponse({ error: 'projection service unavailable' }, 500))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /calculate projection/i }))
+    expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+
+    expect(await screen.findByText(/projection is updating/i)).toBeInTheDocument()
+    expect(screen.getAllByText('$3,389.56').length).toBeGreaterThan(0)
   })
 })
 

@@ -1,10 +1,12 @@
 import { DragEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import {
+  calculateProjection,
   createFinancialItem,
   deleteFinancialItem,
   FinancialItem,
   FinancialItemPayload,
   listFinancialItems,
+  Projection,
   updateFinancialItem,
 } from './financialItemsApi'
 
@@ -25,8 +27,12 @@ function App() {
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [projectionYears, setProjectionYears] = useState('10')
+  const [projection, setProjection] = useState<Projection | null>(null)
+  const [isCalculatingProjection, setIsCalculatingProjection] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [staleMessage, setStaleMessage] = useState<string | null>(null)
+  const [projectionMessage, setProjectionMessage] = useState<string | null>(null)
 
   const editingItem = useMemo(
     () => items.find((item) => item.id === editingItemId) ?? null,
@@ -163,6 +169,27 @@ function App() {
     }
   }
 
+  async function handleProjectionSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsCalculatingProjection(true)
+    setErrorMessage(null)
+    setProjectionMessage(null)
+
+    try {
+      const nextProjection = await calculateProjection({ years: Number.parseInt(projectionYears, 10) })
+      setProjection(nextProjection)
+    } catch (error) {
+      const message = getErrorMessage(error)
+      if (projection) {
+        setProjectionMessage(`Projection is updating. Showing the last successful projection. ${message}`)
+      } else {
+        setErrorMessage(message)
+      }
+    } finally {
+      setIsCalculatingProjection(false)
+    }
+  }
+
   return (
     <main className="app-shell">
       <section className="content-grid" aria-label="Financial items workspace">
@@ -294,8 +321,102 @@ function App() {
             ))}
           </ul>
         </section>
+
+        <section className="projection-panel" aria-labelledby="projection-heading">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Repository-backed projection</p>
+              <h2 id="projection-heading">Projection preview</h2>
+              <p className="panel-help">Calculate whole-year totals from the current saved financial items.</p>
+            </div>
+          </div>
+
+          <form className="projection-controls" onSubmit={handleProjectionSubmit}>
+            <label>
+              Projection years
+              <input
+                inputMode="numeric"
+                min="1"
+                max="75"
+                required
+                value={projectionYears}
+                onChange={(event) => setProjectionYears(event.target.value)}
+              />
+            </label>
+            <button type="submit" disabled={isCalculatingProjection || items.length === 0}>
+              {isCalculatingProjection ? 'Calculating…' : 'Calculate projection'}
+            </button>
+          </form>
+
+          {items.length === 0 ? (
+            <p className="empty-state">Add financial items before calculating a repository-backed projection.</p>
+          ) : null}
+          {projectionMessage ? <p className="status-message warning">{projectionMessage}</p> : null}
+
+          {projection ? <ProjectionResults projection={projection} /> : null}
+        </section>
       </section>
     </main>
+  )
+}
+
+function ProjectionResults({ projection }: { projection: Projection }) {
+  const finalYear = projection.totals[projection.totals.length - 1]
+  const rows = projection.totals.flatMap((total) =>
+    projection.items.map((item, itemIndex) => ({
+      combinedBalanceCents: total.balanceCents,
+      isFirstItemForYear: itemIndex === 0,
+      item,
+      yearlyBalance: item.yearlyBalances.find((yearlyBalance) => yearlyBalance.year === total.year),
+      year: total.year,
+    })),
+  )
+
+  return (
+    <div className="projection-results">
+      <div className="projection-summary-card">
+        <p className="eyebrow">Final projected total</p>
+        <p className="projection-total">{formatCurrency(finalYear.balanceCents, projection.currency)}</p>
+        <p>
+          Year {finalYear.year} with {formatCurrency(finalYear.contributionCents, projection.currency)} annual contributions and{' '}
+          {formatCurrency(finalYear.growthCents, projection.currency)} growth in the final year.
+        </p>
+      </div>
+
+      <div className="table-scroll">
+        <table>
+          <caption>Projection by year and item</caption>
+          <thead>
+            <tr>
+              <th scope="col">Year</th>
+              <th scope="col">Item</th>
+              <th scope="col">Contribution</th>
+              <th scope="col">Growth</th>
+              <th scope="col">Item balance</th>
+              <th scope="col">Combined balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ combinedBalanceCents, isFirstItemForYear, item, yearlyBalance, year }) => {
+              if (!yearlyBalance) {
+                return null
+              }
+
+              return (
+                <tr key={`${year}-${item.id || item.name}`}>
+                  <td>{isFirstItemForYear ? `Year ${year}` : ''}</td>
+                  <td>{item.name}</td>
+                  <td>{formatCurrency(yearlyBalance.contributionCents, projection.currency)}</td>
+                  <td>{formatCurrency(yearlyBalance.growthCents, projection.currency)}</td>
+                  <td>{formatCurrency(yearlyBalance.balanceCents, projection.currency)}</td>
+                  <td>{isFirstItemForYear ? formatCurrency(combinedBalanceCents, projection.currency) : ''}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }
 
