@@ -281,16 +281,6 @@ th {
   text-transform: uppercase;
 }
 
-.projection-item-list {
-  color: #334155;
-  margin: 0;
-  padding-left: 1.25rem;
-}
-
-.projection-item-list li + li {
-  margin-top: 0.4rem;
-}
-
 @media (max-width: 820px) {
   .app-shell {
     padding: 1rem;

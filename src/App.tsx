@@ -376,39 +376,31 @@ function ProjectionResults({ projection }: { projection: Projection }) {
 
       <div className="table-scroll">
         <table>
-          <caption>Projection totals</caption>
+          <caption>Projection by item and year</caption>
           <thead>
             <tr>
               <th scope="col">Year</th>
-              <th scope="col">Balance</th>
+              <th scope="col">Item</th>
               <th scope="col">Contribution</th>
               <th scope="col">Growth</th>
+              <th scope="col">Balance</th>
             </tr>
           </thead>
           <tbody>
-            {projection.totals.map((total) => (
-              <tr key={total.year}>
-                <td>Year {total.year}</td>
-                <td>{formatCurrency(total.balanceCents, projection.currency)}</td>
-                <td>{formatCurrency(total.contributionCents, projection.currency)}</td>
-                <td>{formatCurrency(total.growthCents, projection.currency)}</td>
-              </tr>
-            ))}
+            {projection.items.flatMap((item) =>
+              item.yearlyBalances.map((yearlyBalance) => (
+                <tr key={`${item.id || item.name}-${yearlyBalance.year}`}>
+                  <td>Year {yearlyBalance.year}</td>
+                  <td>{item.name}</td>
+                  <td>{formatCurrency(yearlyBalance.contributionCents, projection.currency)}</td>
+                  <td>{formatCurrency(yearlyBalance.growthCents, projection.currency)}</td>
+                  <td>{formatCurrency(yearlyBalance.balanceCents, projection.currency)}</td>
+                </tr>
+              )),
+            )}
           </tbody>
         </table>
       </div>
-
-      <ul className="projection-item-list" aria-label="Projected item final balances">
-        {projection.items.map((item) => {
-          const itemFinalYear = item.yearlyBalances[item.yearlyBalances.length - 1]
-          return (
-            <li key={item.id || item.name}>
-              {item.name} ends at {formatCurrency(itemFinalYear.balanceCents, projection.currency)} after {projection.years}{' '}
-              {projection.years === 1 ? 'year' : 'years'}.
-            </li>
-          )
-        })}
-      </ul>
     </div>
   )
 }

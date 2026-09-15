@@ -102,8 +102,8 @@ The app can also exercise the existing `POST /projections` API contract through 
 
 - Enter a whole-year projection window between the API-supported `1` and `75` year range.
 - Calculate from the current repository-backed financial items by sending only `{ "years": <value> }`.
-- Review an early table of yearly aggregate balances, contributions, and growth.
-- Review per-item final balances for the selected projection window.
+- Review a per-item, per-year table with contribution, growth, and ending balance details.
+- Keep the aggregate final projected total visible above the table.
 - Keep the last successful projection visible if a recalculation fails transiently.
 
 This first projection UI intentionally does not send hypothetical unsaved items, persist scenarios, or add richer charts yet.
