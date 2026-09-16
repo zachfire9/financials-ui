@@ -5,10 +5,10 @@ A local-first frontend for the Financials API. This repo has been reset from the
 ## Current status
 
 - Runtime: Vite React single-page app
-- Current branch focus: projection UI controls and early result tables
-- Implemented workflows: financial-items CRUD, local proxy smoke testing, and repository-backed projection previews
+- Current branch focus: drawdown projection UI controls and phase-aware result tables
+- Implemented workflows: financial-items CRUD, local proxy smoke testing, and repository-backed saving/drawdown projection previews
 - Static hosting direction: compatible with hosts such as AWS Amplify via `npm run build` output in `dist/`
-- Later planned area: richer projection visualizations and deployment configuration once the basic projection workflow is reviewed
+- Later planned area: richer projection visualizations and deployment configuration once the drawdown table workflow is reviewed
 
 ## Requirements
 
@@ -100,13 +100,13 @@ The app can now exercise the existing `/financial-items` API contract:
 
 The app can also exercise the existing `POST /projections` API contract through the Vite `/api/*` proxy:
 
-- Enter a whole-year projection window between the API-supported `1` and `75` year range.
-- Calculate from the current repository-backed financial items by sending only `{ "years": <value> }`.
-- Review a year-grouped table that lists each item with contribution, growth, and item balance details while showing each year and combined balance once per year.
+- Enter saving years, optional drawdown years, annual withdrawal, and annual withdrawal inflation assumptions.
+- Calculate from the current repository-backed financial items by sending `savingYears`, `drawdownYears`, `annualWithdrawalCents`, and `annualWithdrawalInflationRateBasisPoints`.
+- Review a year-grouped table that lists each item with phase, contribution, withdrawal, growth, and item balance details while showing each year and combined balance once per year.
 - Keep the aggregate final projected total visible above the table.
 - Keep the last successful projection visible if a recalculation fails transiently.
 
-This first projection UI intentionally does not send hypothetical unsaved items, persist scenarios, or add richer charts yet.
+This drawdown projection UI intentionally does not send hypothetical unsaved items, persist scenarios, choose item-specific drawdown return rates, configure withdrawal ordering, or add richer charts yet.
 
 Use fake/example data only while testing this public repo workflow. Real financial values belong in local/private runtime data, not committed docs or fixtures.
 
