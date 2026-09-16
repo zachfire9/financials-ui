@@ -82,16 +82,16 @@ const drawdownProjection = {
       yearlyBalances: [
         { year: 0, phase: 'starting', balanceCents: 20000000, contributionCents: 0, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 0 },
         { year: 1, phase: 'saving', balanceCents: 20100000, contributionCents: 100000, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 0 },
-        { year: 2, phase: 'drawdown', balanceCents: 14100000, contributionCents: 0, withdrawalCents: 6000000, growthCents: 0, unfundedWithdrawalCents: 0 },
-        { year: 3, phase: 'drawdown', balanceCents: 7920000, contributionCents: 0, withdrawalCents: 6180000, growthCents: 0, unfundedWithdrawalCents: 0 },
+        { year: 2, phase: 'drawdown', balanceCents: 13920000, contributionCents: 0, withdrawalCents: 6180000, growthCents: 0, unfundedWithdrawalCents: 0 },
+        { year: 3, phase: 'drawdown', balanceCents: 7554600, contributionCents: 0, withdrawalCents: 6365400, growthCents: 0, unfundedWithdrawalCents: 0 },
       ],
     },
   ],
   totals: [
     { year: 0, phase: 'starting', balanceCents: 20000000, contributionCents: 0, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 0 },
     { year: 1, phase: 'saving', balanceCents: 20100000, contributionCents: 100000, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 0 },
-    { year: 2, phase: 'drawdown', balanceCents: 14100000, contributionCents: 0, withdrawalCents: 6000000, growthCents: 0, unfundedWithdrawalCents: 0 },
-    { year: 3, phase: 'drawdown', balanceCents: 7920000, contributionCents: 0, withdrawalCents: 6180000, growthCents: 0, unfundedWithdrawalCents: 0 },
+    { year: 2, phase: 'drawdown', balanceCents: 13920000, contributionCents: 0, withdrawalCents: 6180000, growthCents: 0, unfundedWithdrawalCents: 0 },
+    { year: 3, phase: 'drawdown', balanceCents: 7554600, contributionCents: 0, withdrawalCents: 6365400, growthCents: 0, unfundedWithdrawalCents: 0 },
   ],
 }
 
@@ -292,23 +292,23 @@ describe('Financial items app', () => {
     expect(bodyRows.map((row) => row.textContent)).toEqual([
       'Year 0Starting$0.00Example brokerage$0.00$0.00$0.00$200,000.00$200,000.00',
       'Year 1Saving$0.00Example brokerage$1,000.00$0.00$0.00$201,000.00$201,000.00',
-      'Year 2Drawdown$60,000.00Example brokerage$0.00$60,000.00$0.00$141,000.00$141,000.00',
-      'Year 3Drawdown$61,800.00Example brokerage$0.00$61,800.00$0.00$79,200.00$79,200.00',
+      'Year 2Drawdown$61,800.00Example brokerage$0.00$61,800.00$0.00$139,200.00$139,200.00',
+      'Year 3Drawdown$63,654.00Example brokerage$0.00$63,654.00$0.00$75,546.00$75,546.00',
     ])
 
     const brokerageYearThreeRow = screen.getByRole('row', {
-      name: 'Year 3 Drawdown $61,800.00 Example brokerage $0.00 $61,800.00 $0.00 $79,200.00 $79,200.00',
+      name: 'Year 3 Drawdown $63,654.00 Example brokerage $0.00 $63,654.00 $0.00 $75,546.00 $75,546.00',
     })
     expect(within(brokerageYearThreeRow).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
       'Year 3',
       'Drawdown',
-      '$61,800.00',
+      '$63,654.00',
       'Example brokerage',
       '$0.00',
-      '$61,800.00',
+      '$63,654.00',
       '$0.00',
-      '$79,200.00',
-      '$79,200.00',
+      '$75,546.00',
+      '$75,546.00',
     ])
 
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/projections', {
