@@ -4,6 +4,7 @@ export type FinancialItem = {
   amountCents: number
   currency: string
   annualReturnRateBasisPoints: number
+  drawdownAnnualReturnRateBasisPoints?: number
   annualContributionCents: number
   sortOrder: number
   createdAt: string
@@ -15,6 +16,7 @@ export type FinancialItemPayload = {
   amountCents: number
   currency: string
   annualReturnRateBasisPoints: number
+  drawdownAnnualReturnRateBasisPoints?: number
   annualContributionCents: number
   sortOrder: number
 }

@@ -15,6 +15,7 @@ const emptyForm = {
   amount: '',
   currency: 'USD',
   annualReturnRate: '',
+  drawdownAnnualReturnRate: '',
   annualContribution: '',
 }
 
@@ -117,6 +118,10 @@ function App() {
       amount: centsToDollarsInput(item.amountCents),
       currency: item.currency,
       annualReturnRate: basisPointsToPercentInput(item.annualReturnRateBasisPoints),
+      drawdownAnnualReturnRate:
+        item.drawdownAnnualReturnRateBasisPoints === undefined
+          ? ''
+          : basisPointsToPercentInput(item.drawdownAnnualReturnRateBasisPoints),
       annualContribution: centsToDollarsInput(item.annualContributionCents),
     })
   }
@@ -251,6 +256,16 @@ function App() {
               />
             </label>
             <label>
+              Drawdown return (%)
+              <input
+                inputMode="decimal"
+                value={form.drawdownAnnualReturnRate}
+                onChange={(event) => setForm({ ...form, drawdownAnnualReturnRate: event.target.value })}
+                placeholder="Uses annual return when blank"
+              />
+              <span className="field-help">Uses annual return when blank.</span>
+            </label>
+            <label>
               Annual contribution
               <input
                 inputMode="decimal"
@@ -313,7 +328,7 @@ function App() {
                     <h3>{item.name}</h3>
                     <p>
                       {formatCurrency(item.amountCents, item.currency)} · {formatRate(item.annualReturnRateBasisPoints)} return ·{' '}
-                      {formatCurrency(item.annualContributionCents, item.currency)} annual contribution
+                      {formatDrawdownReturn(item)} · {formatCurrency(item.annualContributionCents, item.currency)} annual contribution
                     </p>
                   </div>
                 </div>
@@ -465,7 +480,7 @@ function ProjectionResults({ projection }: { projection: Projection }) {
 }
 
 function formToPayload(form: FormState, sortOrder: number): FinancialItemPayload {
-  return {
+  const payload: FinancialItemPayload = {
     name: form.name.trim(),
     amountCents: dollarsToCents(form.amount),
     currency: form.currency.trim().toUpperCase(),
@@ -473,10 +488,16 @@ function formToPayload(form: FormState, sortOrder: number): FinancialItemPayload
     annualContributionCents: dollarsToCents(form.annualContribution),
     sortOrder,
   }
+
+  if (form.drawdownAnnualReturnRate.trim() !== '') {
+    payload.drawdownAnnualReturnRateBasisPoints = percentToBasisPoints(form.drawdownAnnualReturnRate)
+  }
+
+  return payload
 }
 
 function itemToPayload(item: FinancialItem): FinancialItemPayload {
-  return {
+  const payload: FinancialItemPayload = {
     name: item.name,
     amountCents: item.amountCents,
     currency: item.currency,
@@ -484,6 +505,12 @@ function itemToPayload(item: FinancialItem): FinancialItemPayload {
     annualContributionCents: item.annualContributionCents,
     sortOrder: item.sortOrder,
   }
+
+  if (item.drawdownAnnualReturnRateBasisPoints !== undefined) {
+    payload.drawdownAnnualReturnRateBasisPoints = item.drawdownAnnualReturnRateBasisPoints
+  }
+
+  return payload
 }
 
 function compareFinancialItems(left: FinancialItem, right: FinancialItem) {
@@ -525,6 +552,14 @@ function formatCurrency(cents: number, currency: string) {
 
 function formatRate(basisPoints: number) {
   return `${(basisPoints / 100).toFixed(2)}%`
+}
+
+function formatDrawdownReturn(item: FinancialItem) {
+  if (item.drawdownAnnualReturnRateBasisPoints === undefined) {
+    return `${formatRate(item.annualReturnRateBasisPoints)} drawdown return (uses annual return)`
+  }
+
+  return `${formatRate(item.drawdownAnnualReturnRateBasisPoints)} drawdown return`
 }
 
 function formatPhase(phase: string | undefined) {
