@@ -123,7 +123,15 @@ h3 {
 .form-row {
   display: grid;
   gap: 1rem;
-  grid-template-columns: 1fr 120px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.field-help {
+  color: #64748b;
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-top: 0.25rem;
 }
 
 .form-actions,

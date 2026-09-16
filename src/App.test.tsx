@@ -9,6 +9,7 @@ const exampleItem = {
   amountCents: 1250000,
   currency: 'USD',
   annualReturnRateBasisPoints: 700,
+  drawdownAnnualReturnRateBasisPoints: 400,
   annualContributionCents: 300000,
   sortOrder: 1,
   createdAt: '2026-01-01T00:00:00Z',
@@ -114,7 +115,8 @@ describe('Financial items app', () => {
     expect(await screen.findByText('Example brokerage')).toBeInTheDocument()
     const itemCard = screen.getByRole('listitem')
     expect(within(itemCard).getByText(/\$12,500\.00/)).toBeInTheDocument()
-    expect(within(itemCard).getByText(/7\.00%/)).toBeInTheDocument()
+    expect(within(itemCard).getByText(/7\.00% return/)).toBeInTheDocument()
+    expect(within(itemCard).getByText(/4\.00% drawdown return/)).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/financial-items', undefined)
   })
 
@@ -127,7 +129,9 @@ describe('Financial items app', () => {
     fireEvent.click(await screen.findByRole('button', { name: /edit example savings/i }))
 
     expect(screen.getByLabelText(/current amount/i)).toHaveValue('10000.00')
-    expect(screen.getByLabelText(/annual return \(%\)/i)).toHaveValue('4.50')
+    expect(screen.getByLabelText(/^annual return \(%\)$/i)).toHaveValue('4.50')
+    expect(screen.getByLabelText(/drawdown return \(%\)/i)).toHaveValue('')
+    expect(screen.getByText(/uses annual return when blank/i)).toBeInTheDocument()
     expect(screen.queryByLabelText(/sort order/i)).not.toBeInTheDocument()
   })
 
@@ -143,7 +147,8 @@ describe('Financial items app', () => {
 
     fireEvent.change(await screen.findByLabelText(/name/i), { target: { value: 'Example emergency fund' } })
     fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '2500.00' } })
-    fireEvent.change(screen.getByLabelText(/annual return \(%\)/i), { target: { value: '5.5' } })
+    fireEvent.change(screen.getByLabelText(/^annual return \(%\)$/i), { target: { value: '5.5' } })
+    fireEvent.change(screen.getByLabelText(/drawdown return \(%\)/i), { target: { value: '3.25' } })
     fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '1200.00' } })
     fireEvent.click(screen.getByRole('button', { name: /add item/i }))
 
@@ -151,14 +156,16 @@ describe('Financial items app', () => {
     expect(fetchMock).toHaveBeenLastCalledWith('/api/financial-items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Example emergency fund',
-        amountCents: 250000,
-        currency: 'USD',
-        annualReturnRateBasisPoints: 550,
-        annualContributionCents: 120000,
-        sortOrder: 0,
-      }),
+      body: expect.any(String),
+    })
+    expect(requestBodyAt(fetchMock, 1)).toEqual({
+      name: 'Example emergency fund',
+      amountCents: 250000,
+      currency: 'USD',
+      annualReturnRateBasisPoints: 550,
+      drawdownAnnualReturnRateBasisPoints: 325,
+      annualContributionCents: 120000,
+      sortOrder: 0,
     })
   })
 
@@ -223,6 +230,15 @@ describe('Financial items app', () => {
         body: expect.stringContaining('"sortOrder":1'),
       }),
     )
+    expect(requestBodyAt(fetchMock, 2)).toEqual({
+      name: 'Example brokerage',
+      amountCents: 1250000,
+      currency: 'USD',
+      annualReturnRateBasisPoints: 700,
+      drawdownAnnualReturnRateBasisPoints: 400,
+      annualContributionCents: 300000,
+      sortOrder: 1,
+    })
   })
 
   it('keeps the last successful list visible when a refresh fails', async () => {
@@ -330,4 +346,8 @@ function jsonResponse(body: unknown, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   })
+}
+
+function requestBodyAt(fetchMock: ReturnType<typeof vi.fn>, callIndex: number) {
+  return JSON.parse((fetchMock.mock.calls[callIndex][1] as RequestInit).body as string)
 }
