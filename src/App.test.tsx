@@ -279,6 +279,7 @@ describe('Financial items app', () => {
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
       'Year',
       'Phase',
+      'Annual withdrawal',
       'Item',
       'Contribution',
       'Withdrawal',
@@ -289,18 +290,19 @@ describe('Financial items app', () => {
 
     const bodyRows = screen.getAllByRole('row').slice(1)
     expect(bodyRows.map((row) => row.textContent)).toEqual([
-      'Year 0StartingExample brokerage$0.00$0.00$0.00$200,000.00$200,000.00',
-      'Year 1SavingExample brokerage$1,000.00$0.00$0.00$201,000.00$201,000.00',
-      'Year 2DrawdownExample brokerage$0.00$60,000.00$0.00$141,000.00$141,000.00',
-      'Year 3DrawdownExample brokerage$0.00$61,800.00$0.00$79,200.00$79,200.00',
+      'Year 0Starting$0.00Example brokerage$0.00$0.00$0.00$200,000.00$200,000.00',
+      'Year 1Saving$0.00Example brokerage$1,000.00$0.00$0.00$201,000.00$201,000.00',
+      'Year 2Drawdown$60,000.00Example brokerage$0.00$60,000.00$0.00$141,000.00$141,000.00',
+      'Year 3Drawdown$61,800.00Example brokerage$0.00$61,800.00$0.00$79,200.00$79,200.00',
     ])
 
     const brokerageYearThreeRow = screen.getByRole('row', {
-      name: 'Year 3 Drawdown Example brokerage $0.00 $61,800.00 $0.00 $79,200.00 $79,200.00',
+      name: 'Year 3 Drawdown $61,800.00 Example brokerage $0.00 $61,800.00 $0.00 $79,200.00 $79,200.00',
     })
     expect(within(brokerageYearThreeRow).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
       'Year 3',
       'Drawdown',
+      '$61,800.00',
       'Example brokerage',
       '$0.00',
       '$61,800.00',
@@ -319,6 +321,46 @@ describe('Financial items app', () => {
         annualWithdrawalInflationRateBasisPoints: 300,
       }),
     })
+  })
+
+  it('exports and imports JSON backups for financial items', async () => {
+    const backup = {
+      schemaVersion: 1,
+      exportedAt: '2026-01-03T00:00:00Z',
+      items: [exampleItem],
+    }
+    const createObjectURL = vi.fn().mockReturnValue('blob:financial-backup')
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([exampleItem]))
+      .mockResolvedValueOnce(jsonResponse(backup))
+      .mockResolvedValueOnce(jsonResponse([secondItem]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect(await screen.findByText('Example brokerage')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /export json backup/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/financial-items/backup', undefined))
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    expect(click).toHaveBeenCalled()
+    expect(await screen.findByText(/backup exported/i)).toBeInTheDocument()
+
+    const input = screen.getByLabelText(/import json backup/i)
+    const file = new File([JSON.stringify(backup)], 'financials-backup.json', { type: 'application/json' })
+    fireEvent.change(input, { target: { files: [file] } })
+
+    expect(await screen.findByText(/backup imported/i)).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/financial-items/backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(backup),
+    })
+    expect(screen.getByText('Example savings')).toBeInTheDocument()
   })
 
   it('keeps the last successful projection visible when recalculation fails', async () => {
