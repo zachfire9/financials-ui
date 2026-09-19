@@ -270,6 +270,7 @@ describe('Financial items app', () => {
     fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '2' } })
     fireEvent.change(screen.getByLabelText(/annual withdrawal/i), { target: { value: '60000.00' } })
     fireEvent.change(screen.getByLabelText(/withdrawal inflation \(%\)/i), { target: { value: '3.00' } })
+    fireEvent.click(screen.getByLabelText(/grow contributions by withdrawal inflation/i))
     fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
 
     expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
@@ -319,6 +320,7 @@ describe('Financial items app', () => {
         drawdownYears: 2,
         annualWithdrawalCents: 6000000,
         annualWithdrawalInflationRateBasisPoints: 300,
+        inflateAnnualContributions: true,
       }),
     })
   })

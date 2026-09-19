@@ -27,6 +27,7 @@ export type ProjectionRequest = {
   drawdownYears?: number
   annualWithdrawalCents?: number
   annualWithdrawalInflationRateBasisPoints?: number
+  inflateAnnualContributions?: boolean
 }
 
 export type ProjectionPhase = 'starting' | 'saving' | 'drawdown'

@@ -253,6 +253,18 @@ h3 {
   max-width: 220px;
 }
 
+.projection-controls .checkbox-control {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  max-width: 320px;
+}
+
+.projection-controls .checkbox-control input {
+  margin-top: 0;
+  width: auto;
+}
+
 .projection-results {
   display: grid;
   gap: 1rem;
