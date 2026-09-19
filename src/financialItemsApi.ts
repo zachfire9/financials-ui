@@ -60,6 +60,12 @@ export type Projection = {
   totals: YearlyBalance[]
 }
 
+export type FinancialItemsBackup = {
+  schemaVersion: number
+  exportedAt: string
+  items: FinancialItem[]
+}
+
 type ApiErrorBody = {
   error?: string
 }
@@ -88,6 +94,18 @@ export async function updateFinancialItem(id: string, payload: FinancialItemPayl
 
 export async function deleteFinancialItem(id: string): Promise<void> {
   await request<void>(`/financial-items/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export async function exportFinancialItemsBackup(): Promise<FinancialItemsBackup> {
+  return request<FinancialItemsBackup>('/financial-items/backup')
+}
+
+export async function importFinancialItemsBackup(payload: FinancialItemsBackup): Promise<FinancialItem[]> {
+  return request<FinancialItem[]>('/financial-items/backup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
 }
 
 export async function calculateProjection(payload: ProjectionRequest): Promise<Projection> {

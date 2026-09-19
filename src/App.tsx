@@ -1,10 +1,12 @@
-import { DragEvent, FormEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import {
   calculateProjection,
   createFinancialItem,
   deleteFinancialItem,
+  exportFinancialItemsBackup,
   FinancialItem,
   FinancialItemPayload,
+  importFinancialItemsBackup,
   listFinancialItems,
   Projection,
   updateFinancialItem,
@@ -36,6 +38,7 @@ function App() {
   const [isCalculatingProjection, setIsCalculatingProjection] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [staleMessage, setStaleMessage] = useState<string | null>(null)
+  const [backupMessage, setBackupMessage] = useState<string | null>(null)
   const [projectionMessage, setProjectionMessage] = useState<string | null>(null)
 
   const editingItem = useMemo(
@@ -64,6 +67,42 @@ function App() {
       }
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function handleBackupExport() {
+    setBackupMessage(null)
+    setErrorMessage(null)
+
+    try {
+      const backup = await exportFinancialItemsBackup()
+      downloadJSONBackup(backup)
+      setBackupMessage('Backup exported. Keep real financial backup JSON out of git.')
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    }
+  }
+
+  async function handleBackupImport(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) {
+      return
+    }
+
+    setBackupMessage(null)
+    setErrorMessage(null)
+    setStaleMessage(null)
+
+    try {
+      const text = await readTextFile(file)
+      const backup = JSON.parse(text)
+      const importedItems = await importFinancialItemsBackup(backup)
+      setItems(importedItems.sort(compareFinancialItems))
+      setProjection(null)
+      setBackupMessage('Backup imported. Financial items and projections were refreshed.')
+    } catch (error) {
+      setErrorMessage(`Could not import backup. ${getErrorMessage(error)}`)
     }
   }
 
@@ -298,13 +337,23 @@ function App() {
               <h2 id="items-heading">Financial items</h2>
               {items.length > 1 ? <p className="panel-help">Drag items to reorder them.</p> : null}
             </div>
-            <button type="button" className="secondary" onClick={() => void loadItems()}>
-              Refresh
-            </button>
+            <div className="panel-actions">
+              <button type="button" className="secondary" onClick={() => void handleBackupExport()}>
+                Export JSON backup
+              </button>
+              <label className="file-button">
+                Import JSON backup
+                <input type="file" accept="application/json,.json" onChange={(event) => void handleBackupImport(event)} />
+              </label>
+              <button type="button" className="secondary" onClick={() => void loadItems()}>
+                Refresh
+              </button>
+            </div>
           </div>
 
           {isLoading ? <p className="status-message">Loading financial items…</p> : null}
           {staleMessage ? <p className="status-message warning">{staleMessage}</p> : null}
+          {backupMessage ? <p className="status-message">{backupMessage}</p> : null}
 
           {!isLoading && items.length === 0 ? (
             <p className="empty-state">No financial items yet. Add an example planning input to get started.</p>
@@ -418,6 +467,7 @@ function ProjectionResults({ projection }: { projection: Projection }) {
   const finalYear = projection.totals[projection.totals.length - 1]
   const rows = projection.totals.flatMap((total) =>
     projection.items.map((item, itemIndex) => ({
+      annualWithdrawalCents: total.withdrawalCents ?? 0,
       combinedBalanceCents: total.balanceCents,
       isFirstItemForYear: itemIndex === 0,
       item,
@@ -445,6 +495,7 @@ function ProjectionResults({ projection }: { projection: Projection }) {
             <tr>
               <th scope="col">Year</th>
               <th scope="col">Phase</th>
+              <th scope="col">Annual withdrawal</th>
               <th scope="col">Item</th>
               <th scope="col">Contribution</th>
               <th scope="col">Withdrawal</th>
@@ -454,7 +505,7 @@ function ProjectionResults({ projection }: { projection: Projection }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ combinedBalanceCents, isFirstItemForYear, item, yearlyBalance, year }) => {
+            {rows.map(({ annualWithdrawalCents, combinedBalanceCents, isFirstItemForYear, item, yearlyBalance, year }) => {
               if (!yearlyBalance) {
                 return null
               }
@@ -463,6 +514,7 @@ function ProjectionResults({ projection }: { projection: Projection }) {
                 <tr key={`${year}-${item.id || item.name}`}>
                   <td>{isFirstItemForYear ? `Year ${year}` : ''}</td>
                   <td>{isFirstItemForYear ? formatPhase(yearlyBalance.phase) : ''}</td>
+                  <td>{isFirstItemForYear ? formatCurrency(annualWithdrawalCents, projection.currency) : ''}</td>
                   <td>{item.name}</td>
                   <td>{formatCurrency(yearlyBalance.contributionCents, projection.currency)}</td>
                   <td>{formatCurrency(yearlyBalance.withdrawalCents ?? 0, projection.currency)}</td>
@@ -477,6 +529,28 @@ function ProjectionResults({ projection }: { projection: Projection }) {
       </div>
     </div>
   )
+}
+
+function downloadJSONBackup(backup: unknown) {
+  const contents = JSON.stringify(backup, null, 2)
+  const blob = new Blob([contents, '\n'], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `financials-backup-${new Date().toISOString().slice(0, 10)}.json`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function readTextFile(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read file'))
+    reader.readAsText(file)
+  })
 }
 
 function formToPayload(form: FormState, sortOrder: number): FinancialItemPayload {
