@@ -11,6 +11,7 @@ const exampleItem = {
   annualReturnRateBasisPoints: 700,
   drawdownAnnualReturnRateBasisPoints: 400,
   annualContributionCents: 300000,
+  inflateAnnualContribution: true,
   sortOrder: 1,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
@@ -23,6 +24,7 @@ const secondItem = {
   currency: 'USD',
   annualReturnRateBasisPoints: 450,
   annualContributionCents: 120000,
+  inflateAnnualContribution: false,
   sortOrder: 2,
   createdAt: '2026-01-02T00:00:00Z',
   updatedAt: '2026-01-02T00:00:00Z',
@@ -117,6 +119,7 @@ describe('Financial items app', () => {
     expect(within(itemCard).getByText(/\$12,500\.00/)).toBeInTheDocument()
     expect(within(itemCard).getByText(/7\.00% return/)).toBeInTheDocument()
     expect(within(itemCard).getByText(/4\.00% drawdown return/)).toBeInTheDocument()
+    expect(within(itemCard).getByText(/contribution grows with inflation/i)).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/financial-items', undefined)
   })
 
@@ -131,6 +134,7 @@ describe('Financial items app', () => {
     expect(screen.getByLabelText(/current amount/i)).toHaveValue('10000.00')
     expect(screen.getByLabelText(/^annual return \(%\)$/i)).toHaveValue('4.50')
     expect(screen.getByLabelText(/drawdown return \(%\)/i)).toHaveValue('')
+    expect(screen.getByLabelText(/grow this item.+contribution/i)).not.toBeChecked()
     expect(screen.getByText(/uses annual return when blank/i)).toBeInTheDocument()
     expect(screen.queryByLabelText(/sort order/i)).not.toBeInTheDocument()
   })
@@ -150,6 +154,7 @@ describe('Financial items app', () => {
     fireEvent.change(screen.getByLabelText(/^annual return \(%\)$/i), { target: { value: '5.5' } })
     fireEvent.change(screen.getByLabelText(/drawdown return \(%\)/i), { target: { value: '3.25' } })
     fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '1200.00' } })
+    fireEvent.click(screen.getByLabelText(/grow this item.+contribution/i))
     fireEvent.click(screen.getByRole('button', { name: /add item/i }))
 
     await screen.findByText('Example emergency fund')
@@ -165,6 +170,7 @@ describe('Financial items app', () => {
       annualReturnRateBasisPoints: 550,
       drawdownAnnualReturnRateBasisPoints: 325,
       annualContributionCents: 120000,
+      inflateAnnualContribution: true,
       sortOrder: 0,
     })
   })
@@ -237,6 +243,7 @@ describe('Financial items app', () => {
       annualReturnRateBasisPoints: 700,
       drawdownAnnualReturnRateBasisPoints: 400,
       annualContributionCents: 300000,
+      inflateAnnualContribution: true,
       sortOrder: 1,
     })
   })
@@ -270,7 +277,7 @@ describe('Financial items app', () => {
     fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '2' } })
     fireEvent.change(screen.getByLabelText(/annual withdrawal/i), { target: { value: '60000.00' } })
     fireEvent.change(screen.getByLabelText(/withdrawal inflation \(%\)/i), { target: { value: '3.00' } })
-    fireEvent.click(screen.getByLabelText(/grow contributions by withdrawal inflation/i))
+    expect(screen.queryByLabelText(/grow contributions by withdrawal inflation/i)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
 
     expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
@@ -320,7 +327,6 @@ describe('Financial items app', () => {
         drawdownYears: 2,
         annualWithdrawalCents: 6000000,
         annualWithdrawalInflationRateBasisPoints: 300,
-        inflateAnnualContributions: true,
       }),
     })
   })

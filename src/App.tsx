@@ -19,6 +19,7 @@ const emptyForm = {
   annualReturnRate: '',
   drawdownAnnualReturnRate: '',
   annualContribution: '',
+  inflateAnnualContribution: false,
 }
 
 type FormState = typeof emptyForm
@@ -34,7 +35,6 @@ function App() {
   const [projectionDrawdownYears, setProjectionDrawdownYears] = useState('0')
   const [projectionAnnualWithdrawal, setProjectionAnnualWithdrawal] = useState('0.00')
   const [projectionWithdrawalInflationRate, setProjectionWithdrawalInflationRate] = useState('3.00')
-  const [inflateAnnualContributions, setInflateAnnualContributions] = useState(false)
   const [projection, setProjection] = useState<Projection | null>(null)
   const [isCalculatingProjection, setIsCalculatingProjection] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -163,6 +163,7 @@ function App() {
           ? ''
           : basisPointsToPercentInput(item.drawdownAnnualReturnRateBasisPoints),
       annualContribution: centsToDollarsInput(item.annualContributionCents),
+      inflateAnnualContribution: item.inflateAnnualContribution,
     })
   }
 
@@ -229,7 +230,6 @@ function App() {
         drawdownYears: Number.parseInt(projectionDrawdownYears || '0', 10),
         annualWithdrawalCents: dollarsToCents(projectionAnnualWithdrawal),
         annualWithdrawalInflationRateBasisPoints: percentToBasisPoints(projectionWithdrawalInflationRate),
-        inflateAnnualContributions,
       })
       setProjection(nextProjection)
     } catch (error) {
@@ -316,6 +316,14 @@ function App() {
                 required
               />
             </label>
+            <label className="checkbox-control">
+              <input
+                type="checkbox"
+                checked={form.inflateAnnualContribution}
+                onChange={(event) => setForm({ ...form, inflateAnnualContribution: event.target.checked })}
+              />
+              Grow this item’s contribution with inflation
+            </label>
           </div>
 
           {errorMessage ? <p className="status-message error">{errorMessage}</p> : null}
@@ -380,6 +388,7 @@ function App() {
                     <p>
                       {formatCurrency(item.amountCents, item.currency)} · {formatRate(item.annualReturnRateBasisPoints)} return ·{' '}
                       {formatDrawdownReturn(item)} · {formatCurrency(item.annualContributionCents, item.currency)} annual contribution
+                      {item.inflateAnnualContribution ? ' · contribution grows with inflation' : ''}
                     </p>
                   </div>
                 </div>
@@ -447,14 +456,6 @@ function App() {
                 placeholder="3.00"
                 required
               />
-            </label>
-            <label className="checkbox-control">
-              <input
-                type="checkbox"
-                checked={inflateAnnualContributions}
-                onChange={(event) => setInflateAnnualContributions(event.target.checked)}
-              />
-              Grow contributions by withdrawal inflation
             </label>
             <button type="submit" disabled={isCalculatingProjection || items.length === 0}>
               {isCalculatingProjection ? 'Calculating…' : 'Calculate projection'}
@@ -570,6 +571,7 @@ function formToPayload(form: FormState, sortOrder: number): FinancialItemPayload
     currency: form.currency.trim().toUpperCase(),
     annualReturnRateBasisPoints: percentToBasisPoints(form.annualReturnRate),
     annualContributionCents: dollarsToCents(form.annualContribution),
+    inflateAnnualContribution: form.inflateAnnualContribution,
     sortOrder,
   }
 
@@ -587,6 +589,7 @@ function itemToPayload(item: FinancialItem): FinancialItemPayload {
     currency: item.currency,
     annualReturnRateBasisPoints: item.annualReturnRateBasisPoints,
     annualContributionCents: item.annualContributionCents,
+    inflateAnnualContribution: item.inflateAnnualContribution,
     sortOrder: item.sortOrder,
   }
 
