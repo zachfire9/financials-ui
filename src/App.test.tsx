@@ -104,6 +104,79 @@ describe('Financial items app', () => {
 
   afterEach(() => {
     cleanup()
+    vi.unstubAllEnvs()
+  })
+
+  it('runs ephemeral sessions from imported browser-owned data without loading or saving repository items', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(exampleProjection))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect(screen.getByText(/ephemeral session mode/i)).toBeInTheDocument()
+    expect(screen.getByText(/refreshing or closing the browser loses unsaved changes/i)).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /refresh/i })).not.toBeInTheDocument()
+
+    const input = screen.getByLabelText(/import json backup/i)
+    const file = new File([
+      JSON.stringify({ schemaVersion: 1, exportedAt: '2026-01-03T00:00:00Z', items: [exampleItem] }),
+    ], 'financials-backup.json', { type: 'application/json' })
+    fireEvent.change(input, { target: { files: [file] } })
+
+    expect(await screen.findByText(/backup imported into this browser session/i)).toBeInTheDocument()
+    expect(screen.getByText('Example brokerage')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /edit example brokerage/i }))
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Example browser-only account' } })
+    fireEvent.click(screen.getByRole('button', { name: /save item/i }))
+
+    expect(await screen.findByText('Example browser-only account')).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(requestBodyAt(fetchMock, 0)).toMatchObject({
+      savingYears: 10,
+      drawdownYears: 0,
+      annualWithdrawalCents: 0,
+      annualWithdrawalInflationRateBasisPoints: 300,
+      items: [
+        expect.objectContaining({
+          name: 'Example browser-only account',
+          amountCents: 1250000,
+          inflateAnnualContribution: true,
+        }),
+      ],
+    })
+  })
+
+  it('exports ephemeral browser-owned data without calling the backup API', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    const createObjectURL = vi.fn().mockReturnValue('blob:financial-backup')
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    const input = screen.getByLabelText(/import json backup/i)
+    const file = new File([
+      JSON.stringify({ schemaVersion: 1, exportedAt: '2026-01-03T00:00:00Z', items: [secondItem] }),
+    ], 'financials-backup.json', { type: 'application/json' })
+    fireEvent.change(input, { target: { files: [file] } })
+    expect(await screen.findByText('Example savings')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /export json backup/i }))
+
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    expect(click).toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(await screen.findByText(/session JSON exported/i)).toBeInTheDocument()
   })
 
   it('loads financial items without the intro hero container', async () => {

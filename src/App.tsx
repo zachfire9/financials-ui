@@ -6,6 +6,7 @@ import {
   exportFinancialItemsBackup,
   FinancialItem,
   FinancialItemPayload,
+  FinancialItemsBackup,
   importFinancialItemsBackup,
   listFinancialItems,
   Projection,
@@ -25,6 +26,7 @@ const emptyForm = {
 type FormState = typeof emptyForm
 
 function App() {
+  const isEphemeralSession = isEphemeralSessionMode()
   const [items, setItems] = useState<FinancialItem[]>([])
   const [form, setForm] = useState<FormState>(emptyForm)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
@@ -48,8 +50,12 @@ function App() {
   )
 
   useEffect(() => {
+    if (isEphemeralSession) {
+      setIsLoading(false)
+      return
+    }
     void loadItems()
-  }, [])
+  }, [isEphemeralSession])
 
   async function loadItems() {
     setIsLoading(items.length === 0)
@@ -76,6 +82,12 @@ function App() {
     setErrorMessage(null)
 
     try {
+      if (isEphemeralSession) {
+        downloadJSONBackup(backupFromItems(items))
+        setBackupMessage('Session JSON exported. Keep real financial backup JSON out of git.')
+        return
+      }
+
       const backup = await exportFinancialItemsBackup()
       downloadJSONBackup(backup)
       setBackupMessage('Backup exported. Keep real financial backup JSON out of git.')
@@ -97,7 +109,16 @@ function App() {
 
     try {
       const text = await readTextFile(file)
-      const backup = JSON.parse(text)
+      const backup = JSON.parse(text) as FinancialItemsBackup
+      if (isEphemeralSession) {
+        const importedItems = backupItemsFromJSON(backup)
+        setItems(importedItems.sort(compareFinancialItems))
+        setProjection(null)
+        resetForm()
+        setBackupMessage('Backup imported into this browser session. Refreshing or closing the browser loses unsaved changes unless you export JSON again.')
+        return
+      }
+
       const importedItems = await importFinancialItemsBackup(backup)
       setItems(importedItems.sort(compareFinancialItems))
       setProjection(null)
@@ -115,18 +136,32 @@ function App() {
 
     try {
       if (editingItemId && editingItem) {
-        const updatedItem = await updateFinancialItem(
-          editingItemId,
-          formToPayload(form, editingItem.sortOrder),
-        )
-        setItems((currentItems) =>
-          currentItems
-            .map((item) => (item.id === updatedItem.id ? updatedItem : item))
-            .sort(compareFinancialItems),
-        )
+        if (isEphemeralSession) {
+          const updatedItem = localItemFromPayload(formToPayload(form, editingItem.sortOrder), editingItem.id, editingItem.createdAt)
+          setItems((currentItems) =>
+            currentItems
+              .map((item) => (item.id === updatedItem.id ? updatedItem : item))
+              .sort(compareFinancialItems),
+          )
+        } else {
+          const updatedItem = await updateFinancialItem(
+            editingItemId,
+            formToPayload(form, editingItem.sortOrder),
+          )
+          setItems((currentItems) =>
+            currentItems
+              .map((item) => (item.id === updatedItem.id ? updatedItem : item))
+              .sort(compareFinancialItems),
+          )
+        }
       } else {
-        const createdItem = await createFinancialItem(formToPayload(form, nextSortOrder(items)))
-        setItems((currentItems) => [...currentItems, createdItem].sort(compareFinancialItems))
+        if (isEphemeralSession) {
+          const createdItem = localItemFromPayload(formToPayload(form, nextSortOrder(items)), nextLocalItemID(items))
+          setItems((currentItems) => [...currentItems, createdItem].sort(compareFinancialItems))
+        } else {
+          const createdItem = await createFinancialItem(formToPayload(form, nextSortOrder(items)))
+          setItems((currentItems) => [...currentItems, createdItem].sort(compareFinancialItems))
+        }
       }
       resetForm()
     } catch (error) {
@@ -141,7 +176,9 @@ function App() {
     setStaleMessage(null)
 
     try {
-      await deleteFinancialItem(item.id)
+      if (!isEphemeralSession) {
+        await deleteFinancialItem(item.id)
+      }
       setItems((currentItems) => currentItems.filter((currentItem) => currentItem.id !== item.id))
       if (editingItemId === item.id) {
         resetForm()
@@ -201,7 +238,9 @@ function App() {
 
     setDraggingItemId(null)
     setItems(renumberedItems)
-    void persistReorderedItems(renumberedItems, previousItems)
+    if (!isEphemeralSession) {
+      void persistReorderedItems(renumberedItems, previousItems)
+    }
   }
 
   async function persistReorderedItems(nextItems: FinancialItem[], previousItems: FinancialItem[]) {
@@ -225,12 +264,14 @@ function App() {
     setProjectionMessage(null)
 
     try {
-      const nextProjection = await calculateProjection({
+      const projectionRequest = {
         savingYears: Number.parseInt(projectionSavingYears, 10),
         drawdownYears: Number.parseInt(projectionDrawdownYears || '0', 10),
         annualWithdrawalCents: dollarsToCents(projectionAnnualWithdrawal),
         annualWithdrawalInflationRateBasisPoints: percentToBasisPoints(projectionWithdrawalInflationRate),
-      })
+        ...(isEphemeralSession ? { items: items.map(itemToPayload) } : {}),
+      }
+      const nextProjection = await calculateProjection(projectionRequest)
       setProjection(nextProjection)
     } catch (error) {
       const message = getErrorMessage(error)
@@ -343,8 +384,11 @@ function App() {
         <section className="items-panel" aria-labelledby="items-heading">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow">API-backed list</p>
+              <p className="eyebrow">{isEphemeralSession ? 'Ephemeral session mode' : 'API-backed list'}</p>
               <h2 id="items-heading">Financial items</h2>
+              {isEphemeralSession ? (
+                <p className="panel-help">Refreshing or closing the browser loses unsaved changes unless you export JSON again.</p>
+              ) : null}
               {items.length > 1 ? <p className="panel-help">Drag items to reorder them.</p> : null}
             </div>
             <div className="panel-actions">
@@ -355,9 +399,11 @@ function App() {
                 Import JSON backup
                 <input type="file" accept="application/json,.json" onChange={(event) => void handleBackupImport(event)} />
               </label>
-              <button type="button" className="secondary" onClick={() => void loadItems()}>
-                Refresh
-              </button>
+              {!isEphemeralSession ? (
+                <button type="button" className="secondary" onClick={() => void loadItems()}>
+                  Refresh
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -408,9 +454,13 @@ function App() {
         <section className="projection-panel" aria-labelledby="projection-heading">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow">Repository-backed projection</p>
+              <p className="eyebrow">{isEphemeralSession ? 'Browser-owned projection' : 'Repository-backed projection'}</p>
               <h2 id="projection-heading">Projection preview</h2>
-              <p className="panel-help">Calculate saving and drawdown years from the current saved financial items.</p>
+              <p className="panel-help">
+                {isEphemeralSession
+                  ? 'Calculate saving and drawdown years from the financial items currently in this browser session.'
+                  : 'Calculate saving and drawdown years from the current saved financial items.'}
+              </p>
             </div>
           </div>
 
@@ -562,6 +612,54 @@ function readTextFile(file: File) {
     reader.onerror = () => reject(reader.error ?? new Error('Could not read file'))
     reader.readAsText(file)
   })
+}
+
+function backupItemsFromJSON(backup: FinancialItemsBackup) {
+  if (!backup || !Array.isArray(backup.items)) {
+    throw new Error('Backup JSON must include an items array.')
+  }
+
+  return backup.items.map((item, index) => ({
+    ...item,
+    id: item.id || `session-item-${index + 1}`,
+    inflateAnnualContribution: item.inflateAnnualContribution ?? false,
+    sortOrder: item.sortOrder ?? index,
+    createdAt: item.createdAt || new Date().toISOString(),
+    updatedAt: item.updatedAt || new Date().toISOString(),
+  }))
+}
+
+function backupFromItems(items: FinancialItem[]): FinancialItemsBackup {
+  return {
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    items,
+  }
+}
+
+function localItemFromPayload(payload: FinancialItemPayload, id: string, createdAt = new Date().toISOString()): FinancialItem {
+  const now = new Date().toISOString()
+  return {
+    id,
+    name: payload.name,
+    amountCents: payload.amountCents,
+    currency: payload.currency,
+    annualReturnRateBasisPoints: payload.annualReturnRateBasisPoints,
+    drawdownAnnualReturnRateBasisPoints: payload.drawdownAnnualReturnRateBasisPoints,
+    annualContributionCents: payload.annualContributionCents,
+    inflateAnnualContribution: payload.inflateAnnualContribution,
+    sortOrder: payload.sortOrder,
+    createdAt,
+    updatedAt: now,
+  }
+}
+
+function nextLocalItemID(items: FinancialItem[]) {
+  return `session-item-${items.length + 1}`
+}
+
+function isEphemeralSessionMode() {
+  return import.meta.env.VITE_FINANCIALS_SESSION_MODE?.trim().toLowerCase() === 'ephemeral'
 }
 
 function formToPayload(form: FormState, sortOrder: number): FinancialItemPayload {
