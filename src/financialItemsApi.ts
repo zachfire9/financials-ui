@@ -29,6 +29,7 @@ export type ProjectionRequest = {
   drawdownYears?: number
   annualWithdrawalCents?: number
   annualWithdrawalInflationRateBasisPoints?: number
+  items?: FinancialItemPayload[]
 }
 
 export type ProjectionPhase = 'starting' | 'saving' | 'drawdown'

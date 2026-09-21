@@ -5,10 +5,10 @@ A local-first frontend for the Financials API. This repo has been reset from the
 ## Current status
 
 - Runtime: Vite React single-page app
-- Current branch focus: per-item annual contribution inflation controls
-- Implemented workflows: financial-items CRUD, JSON backup export/import, local proxy smoke testing, and repository-backed saving/drawdown projection previews
+- Current branch focus: ephemeral browser-owned import/export session mode
+- Implemented workflows: financial-items CRUD, browser-owned ephemeral JSON sessions, JSON backup export/import, local proxy smoke testing, and repository-backed or request-supplied saving/drawdown projection previews
 - Static hosting direction: S3/CloudFront first via `npm run build` output in `dist/`; Amplify Hosting remains a later migration option if its familiar GitHub-connected workflow becomes preferable
-- Later planned areas: browser-owned ephemeral import/export mode for privacy-first use, production API base URL wiring, static AWS hosting, and deployed access control before real data
+- Later planned areas: production API base URL wiring, static AWS hosting, and deployed access control before real data
 
 ## Requirements
 
@@ -30,6 +30,11 @@ Copy-Item .env.example .env
 ```
 
 Then edit `.env` if your local API is not available at `http://localhost:8080`. Keep real machine-specific addresses, hostnames, and private runtime values out of commits.
+
+Session modes:
+
+- `VITE_FINANCIALS_SESSION_MODE=persistent` keeps the existing API-backed financial item CRUD workflow.
+- `VITE_FINANCIALS_SESSION_MODE=ephemeral` keeps imported JSON data in browser memory only. Create/edit/delete/reorder actions do not call the financial-items API, projections send the current items in the request body, and refreshing or closing the browser loses unsaved changes unless you export JSON again.
 
 Start the Financials API from the sibling `financials-api` repo in a separate terminal:
 
@@ -94,8 +99,8 @@ The app can now exercise the existing `/financial-items` API contract:
 - Create an example financial item
 - Edit an existing financial item with a full `PUT` payload
 - Delete an item
-- Export a JSON backup file for saved items
-- Import a JSON backup file, replacing saved items and clearing stale projection results
+- Export a JSON backup file for saved items or the current browser-owned session
+- Import a JSON backup file, replacing saved items in persistent mode or replacing the current browser session in ephemeral mode
 - Show loading, empty, validation/error, backup success, and stale-data states
 
 ## Projection UI
@@ -104,7 +109,7 @@ The app can also exercise the existing `POST /projections` API contract through 
 
 - Enter saving years, optional drawdown years, annual withdrawal, and annual withdrawal inflation assumptions.
 - Optionally grow saving-year annual contributions by the withdrawal inflation rate for the projection only; saved financial item contribution values are not changed.
-- Calculate from the current repository-backed financial items by sending `savingYears`, `drawdownYears`, `annualWithdrawalCents`, `annualWithdrawalInflationRateBasisPoints`, and `inflateAnnualContributions`.
+- Calculate from the current repository-backed financial items in persistent mode or from the current browser-owned imported items in ephemeral mode by sending `savingYears`, `drawdownYears`, `annualWithdrawalCents`, `annualWithdrawalInflationRateBasisPoints`, and, for ephemeral mode, request-supplied `items`.
 - Review a year-grouped table that lists each item with phase, annual withdrawal, contribution, withdrawal, growth, and item balance details while showing each year, annual withdrawal, and combined balance once per year.
 - Keep the aggregate final projected total visible above the table.
 - Keep the last successful projection visible if a recalculation fails transiently.
