@@ -5,10 +5,10 @@ A local-first frontend for the Financials API. This repo has been reset from the
 ## Current status
 
 - Runtime: Vite React single-page app
-- Current branch focus: JSON backup export/import controls and annual-withdrawal projection display
+- Current branch focus: per-item annual contribution inflation controls
 - Implemented workflows: financial-items CRUD, JSON backup export/import, local proxy smoke testing, and repository-backed saving/drawdown projection previews
-- Static hosting direction: compatible with hosts such as AWS Amplify via `npm run build` output in `dist/`
-- Later planned area: richer projection visualizations and deployment configuration once the drawdown table workflow is reviewed
+- Static hosting direction: S3/CloudFront first via `npm run build` output in `dist/`; Amplify Hosting remains a later migration option if its familiar GitHub-connected workflow becomes preferable
+- Later planned areas: browser-owned ephemeral import/export mode for privacy-first use, production API base URL wiring, static AWS hosting, and deployed access control before real data
 
 ## Requirements
 
@@ -103,7 +103,8 @@ The app can now exercise the existing `/financial-items` API contract:
 The app can also exercise the existing `POST /projections` API contract through the Vite `/api/*` proxy:
 
 - Enter saving years, optional drawdown years, annual withdrawal, and annual withdrawal inflation assumptions.
-- Calculate from the current repository-backed financial items by sending `savingYears`, `drawdownYears`, `annualWithdrawalCents`, and `annualWithdrawalInflationRateBasisPoints`.
+- Optionally grow saving-year annual contributions by the withdrawal inflation rate for the projection only; saved financial item contribution values are not changed.
+- Calculate from the current repository-backed financial items by sending `savingYears`, `drawdownYears`, `annualWithdrawalCents`, `annualWithdrawalInflationRateBasisPoints`, and `inflateAnnualContributions`.
 - Review a year-grouped table that lists each item with phase, annual withdrawal, contribution, withdrawal, growth, and item balance details while showing each year, annual withdrawal, and combined balance once per year.
 - Keep the aggregate final projected total visible above the table.
 - Keep the last successful projection visible if a recalculation fails transiently.

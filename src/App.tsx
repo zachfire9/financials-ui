@@ -19,6 +19,7 @@ const emptyForm = {
   annualReturnRate: '',
   drawdownAnnualReturnRate: '',
   annualContribution: '',
+  inflateAnnualContribution: false,
 }
 
 type FormState = typeof emptyForm
@@ -162,6 +163,7 @@ function App() {
           ? ''
           : basisPointsToPercentInput(item.drawdownAnnualReturnRateBasisPoints),
       annualContribution: centsToDollarsInput(item.annualContributionCents),
+      inflateAnnualContribution: item.inflateAnnualContribution,
     })
   }
 
@@ -314,6 +316,14 @@ function App() {
                 required
               />
             </label>
+            <label className="checkbox-control">
+              <input
+                type="checkbox"
+                checked={form.inflateAnnualContribution}
+                onChange={(event) => setForm({ ...form, inflateAnnualContribution: event.target.checked })}
+              />
+              Grow this item’s contribution with inflation
+            </label>
           </div>
 
           {errorMessage ? <p className="status-message error">{errorMessage}</p> : null}
@@ -378,6 +388,7 @@ function App() {
                     <p>
                       {formatCurrency(item.amountCents, item.currency)} · {formatRate(item.annualReturnRateBasisPoints)} return ·{' '}
                       {formatDrawdownReturn(item)} · {formatCurrency(item.annualContributionCents, item.currency)} annual contribution
+                      {item.inflateAnnualContribution ? ' · contribution grows with inflation' : ''}
                     </p>
                   </div>
                 </div>
@@ -560,6 +571,7 @@ function formToPayload(form: FormState, sortOrder: number): FinancialItemPayload
     currency: form.currency.trim().toUpperCase(),
     annualReturnRateBasisPoints: percentToBasisPoints(form.annualReturnRate),
     annualContributionCents: dollarsToCents(form.annualContribution),
+    inflateAnnualContribution: form.inflateAnnualContribution,
     sortOrder,
   }
 
@@ -577,6 +589,7 @@ function itemToPayload(item: FinancialItem): FinancialItemPayload {
     currency: item.currency,
     annualReturnRateBasisPoints: item.annualReturnRateBasisPoints,
     annualContributionCents: item.annualContributionCents,
+    inflateAnnualContribution: item.inflateAnnualContribution,
     sortOrder: item.sortOrder,
   }
 

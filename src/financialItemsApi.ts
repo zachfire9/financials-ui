@@ -6,6 +6,7 @@ export type FinancialItem = {
   annualReturnRateBasisPoints: number
   drawdownAnnualReturnRateBasisPoints?: number
   annualContributionCents: number
+  inflateAnnualContribution: boolean
   sortOrder: number
   createdAt: string
   updatedAt: string
@@ -18,6 +19,7 @@ export type FinancialItemPayload = {
   annualReturnRateBasisPoints: number
   drawdownAnnualReturnRateBasisPoints?: number
   annualContributionCents: number
+  inflateAnnualContribution: boolean
   sortOrder: number
 }
 
@@ -48,6 +50,7 @@ export type ProjectedItem = {
   annualReturnRateBasisPoints: number
   drawdownAnnualReturnRateBasisPoints?: number
   annualContributionCents: number
+  inflateAnnualContribution: boolean
   yearlyBalances: YearlyBalance[]
 }
 
