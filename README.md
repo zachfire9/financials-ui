@@ -7,7 +7,7 @@ A local-first frontend for the Financials API. This repo has been reset from the
 - Runtime: Vite React single-page app
 - Current branch focus: per-item annual contribution inflation controls
 - Implemented workflows: financial-items CRUD, JSON backup export/import, local proxy smoke testing, and repository-backed saving/drawdown projection previews
-- Static hosting direction: compatible with S3/CloudFront or AWS Amplify via `npm run build` output in `dist/`
+- Static hosting direction: S3/CloudFront first via `npm run build` output in `dist/`; Amplify Hosting remains a later migration option if its familiar GitHub-connected workflow becomes preferable
 - Later planned areas: browser-owned ephemeral import/export mode for privacy-first use, production API base URL wiring, static AWS hosting, and deployed access control before real data
 
 ## Requirements
