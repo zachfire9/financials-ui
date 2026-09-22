@@ -5,8 +5,8 @@ A local-first frontend for the Financials API. This repo has been reset from the
 ## Current status
 
 - Runtime: Vite React single-page app
-- Current branch focus: static AWS frontend hosting workflow
-- Implemented workflows: financial-items CRUD, browser-owned ephemeral JSON sessions, JSON backup export/import, local proxy smoke testing, repository-backed or request-supplied saving/drawdown projection previews, and placeholder-safe static deploy commands
+- Current branch focus: SAM-managed static AWS frontend hosting infrastructure
+- Implemented workflows: financial-items CRUD, browser-owned ephemeral JSON sessions, JSON backup export/import, local proxy smoke testing, repository-backed or request-supplied saving/drawdown projection previews, placeholder-safe static deploy commands, and SAM-managed S3/CloudFront frontend infrastructure
 - Static hosting direction: S3/CloudFront first via `npm run build` output in `dist/`; Amplify Hosting remains a later migration option if its familiar GitHub-connected workflow becomes preferable
 - Later planned area: deployed access control before real data
 
@@ -14,6 +14,7 @@ A local-first frontend for the Financials API. This repo has been reset from the
 
 - Node.js 20+
 - npm 10+
+- Optional for AWS infrastructure deploys: AWS CLI and AWS SAM CLI
 
 ## Local development
 
@@ -122,7 +123,7 @@ Use fake/example data only while testing this public repo workflow. Real financi
 
 Use this workflow for a low-cost S3 + CloudFront static deploy. Keep real bucket names, CloudFront distribution IDs, deployed API URLs, API keys, and custom domains out of committed files unless you intentionally decide they are public-safe.
 
-The deployed backend API must already exist from the sibling `financials-api` SAM stack. Static hosting should use `ephemeral` session mode until Step 25 adds deployed access control; use fake data only before then.
+The deployed backend API must already exist from the sibling `financials-api` SAM stack. Static hosting should use `ephemeral` session mode until the next access-control step adds deployed API protection; use fake data only before then.
 
 1. Copy the production placeholder config locally:
 
@@ -157,10 +158,61 @@ The deployed backend API must already exist from the sibling `financials-api` SA
 
 Suggested AWS shape:
 
-- S3 bucket stores the `dist/` files.
+- A private S3 bucket stores the `dist/` files.
 - CloudFront serves the bucket over HTTPS.
-- Configure SPA fallback so direct browser refreshes return `index.html`.
+- CloudFront Origin Access Control allows CloudFront to read from the private bucket without making the bucket public.
+- SPA fallback maps CloudFront 403/404 responses to `index.html` so direct browser refreshes work.
 - Configure the API stack's CORS allowed origins with the CloudFront/static site origin, using deploy parameters instead of committed real values.
+
+### SAM-managed frontend infrastructure
+
+This repo includes `template.yaml` for creating the low-cost frontend hosting resources with SAM/CloudFormation. The template creates:
+
+- a private S3 bucket for built files
+- a CloudFront Origin Access Control
+- a CloudFront distribution
+- a bucket policy allowing CloudFront read access only
+- SPA fallback behavior for browser routes
+- stack outputs for the bucket name, distribution ID, CloudFront domain, and CloudFront URL
+
+Validate the template if SAM is installed:
+
+```powershell
+npm run infra:validate
+```
+
+Create the frontend infrastructure with guided SAM deploy:
+
+```powershell
+npm run infra:deploy
+```
+
+Use `zachfire9` for the AWS profile when prompted by SAM. Leave `SiteBucketName` blank if you want CloudFormation to generate a bucket name, and keep `PriceClass_100` for the lowest-cost CloudFront edge-location default.
+
+If you prefer running SAM directly:
+
+```powershell
+sam deploy --guided --profile zachfire9
+```
+
+`samconfig.toml` is ignored so real local stack settings stay out of git. `samconfig.example.toml` is a placeholder-safe reference if you want to copy it locally.
+
+After the stack deploys, inspect the outputs:
+
+```powershell
+aws cloudformation describe-stacks --stack-name "<frontend-stack-name>" --profile zachfire9 --query "Stacks[0].Outputs" --output table
+```
+
+Use the stack outputs to deploy the current build assets:
+
+```powershell
+$bucket = aws cloudformation describe-stacks --stack-name "<frontend-stack-name>" --profile zachfire9 --query "Stacks[0].Outputs[?OutputKey=='FrontendBucketName'].OutputValue | [0]" --output text
+$distributionId = aws cloudformation describe-stacks --stack-name "<frontend-stack-name>" --profile zachfire9 --query "Stacks[0].Outputs[?OutputKey=='FrontendDistributionId'].OutputValue | [0]" --output text
+npm run build
+.\scripts\deploy-static.ps1 -BucketName $bucket -DistributionId $distributionId -Profile zachfire9
+```
+
+Optional custom domain resources such as ACM certificates and Route 53 aliases are intentionally deferred until a domain is chosen. The first deploy can use the generated CloudFront URL from the `FrontendUrl` output.
 
 Amplify Hosting remains a possible later migration if GitHub-connected deploys become worth the extra abstraction.
 
