@@ -5,10 +5,10 @@ A local-first frontend for the Financials API. This repo has been reset from the
 ## Current status
 
 - Runtime: Vite React single-page app
-- Current branch focus: ephemeral browser-owned import/export session mode
-- Implemented workflows: financial-items CRUD, browser-owned ephemeral JSON sessions, JSON backup export/import, local proxy smoke testing, and repository-backed or request-supplied saving/drawdown projection previews
+- Current branch focus: static AWS frontend hosting workflow
+- Implemented workflows: financial-items CRUD, browser-owned ephemeral JSON sessions, JSON backup export/import, local proxy smoke testing, repository-backed or request-supplied saving/drawdown projection previews, and placeholder-safe static deploy commands
 - Static hosting direction: S3/CloudFront first via `npm run build` output in `dist/`; Amplify Hosting remains a later migration option if its familiar GitHub-connected workflow becomes preferable
-- Later planned areas: production API base URL wiring, static AWS hosting, and deployed access control before real data
+- Later planned area: deployed access control before real data
 
 ## Requirements
 
@@ -29,7 +29,7 @@ Copy local config:
 Copy-Item .env.example .env
 ```
 
-Then edit `.env` if your local API is not available at `http://localhost:8080`. Keep real machine-specific addresses, hostnames, and private runtime values out of commits.
+Then edit `.env` if your local API is not available at `http://localhost:8080`. Keep real machine-specific addresses, hostnames, and private runtime values out of commits. For static AWS hosting, copy `.env.production.example` to ignored `.env.production` instead of putting deployed values in `.env.example`.
 
 Session modes:
 
@@ -89,7 +89,7 @@ Use this checklist when testing the UI from another device on the same private n
 
 5. If the UI loads but API calls fail, verify the development machine can reach the API locally and that the UI terminal shows `/api/*` proxy requests. Keep any real network/firewall troubleshooting notes outside this public repo.
 
-This step intentionally keeps browser API calls behind the Vite dev proxy. Later static-hosting work will add explicit API CORS and deploy-readiness configuration.
+This local network smoke test intentionally keeps browser API calls behind the Vite dev proxy. Static-hosting builds use `VITE_FINANCIALS_API_BASE_URL` directly instead.
 
 ## Financial-items UI
 
@@ -118,6 +118,52 @@ This drawdown projection UI intentionally does not send hypothetical unsaved ite
 
 Use fake/example data only while testing this public repo workflow. Real financial values belong in local/private runtime data, not committed docs or fixtures.
 
+## Static AWS hosting
+
+Use this workflow for a low-cost S3 + CloudFront static deploy. Keep real bucket names, CloudFront distribution IDs, deployed API URLs, API keys, and custom domains out of committed files unless you intentionally decide they are public-safe.
+
+The deployed backend API must already exist from the sibling `financials-api` SAM stack. Static hosting should use `ephemeral` session mode until Step 25 adds deployed access control; use fake data only before then.
+
+1. Copy the production placeholder config locally:
+
+   ```powershell
+   Copy-Item .env.production.example .env.production
+   ```
+
+2. Edit `.env.production` with your deployed API Gateway base URL and ephemeral mode:
+
+   ```env
+   VITE_FINANCIALS_API_BASE_URL=https://<api-id>.execute-api.<aws-region>.amazonaws.com
+   VITE_FINANCIALS_SESSION_MODE=ephemeral
+   ```
+
+3. Build the static app:
+
+   ```powershell
+   npm run build
+   ```
+
+4. Sync `dist/` to the provided frontend bucket:
+
+   ```powershell
+   .\scripts\deploy-static.ps1 -BucketName "<frontend-bucket-name>" -Profile zachfire9
+   ```
+
+5. If the site is served through CloudFront, include the distribution ID so the script requests an invalidation:
+
+   ```powershell
+   .\scripts\deploy-static.ps1 -BucketName "<frontend-bucket-name>" -DistributionId "<cloudfront-distribution-id>" -Profile zachfire9
+   ```
+
+Suggested AWS shape:
+
+- S3 bucket stores the `dist/` files.
+- CloudFront serves the bucket over HTTPS.
+- Configure SPA fallback so direct browser refreshes return `index.html`.
+- Configure the API stack's CORS allowed origins with the CloudFront/static site origin, using deploy parameters instead of committed real values.
+
+Amplify Hosting remains a possible later migration if GitHub-connected deploys become worth the extra abstraction.
+
 ## Build and test
 
 Run unit tests:
@@ -132,7 +178,7 @@ Build the static app:
 npm run build
 ```
 
-The production build is written to `dist/`, which is the directory a static host such as AWS Amplify would publish.
+The production build is written to `dist/`, which is the directory to sync to the static S3 bucket or preview locally.
 
 ## Public repo boundaries
 

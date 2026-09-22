@@ -17,6 +17,7 @@ coverage
 # Local env/config
 .env
 .env.local
+.env.production
 .env.*.local
 
 # OS/editor files

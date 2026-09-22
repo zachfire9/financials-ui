@@ -147,7 +147,7 @@ async function readApiError(response: Response) {
   return `Request failed with status ${response.status}`
 }
 
-function normalizeApiBaseUrl(value: string | undefined) {
+export function normalizeApiBaseUrl(value: string | undefined) {
   const base = value?.trim() || '/api'
   return base.endsWith('/') ? base.slice(0, -1) : base
 }
