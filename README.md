@@ -5,10 +5,10 @@ A local-first frontend for the Financials API. This repo has been reset from the
 ## Current status
 
 - Runtime: Vite React single-page app
-- Current branch focus: SAM-managed static AWS frontend hosting infrastructure
-- Implemented workflows: financial-items CRUD, browser-owned ephemeral JSON sessions, JSON backup export/import, local proxy smoke testing, repository-backed or request-supplied saving/drawdown projection previews, placeholder-safe static deploy commands, and SAM-managed S3/CloudFront frontend infrastructure
+- Current branch focus: deployed access control before real data
+- Implemented workflows: financial-items CRUD, browser-owned ephemeral JSON sessions, JSON backup export/import, local proxy smoke testing, repository-backed or request-supplied saving/drawdown projection previews, placeholder-safe static deploy commands, SAM-managed S3/CloudFront frontend infrastructure, and optional deployed shared-token API access
 - Static hosting direction: S3/CloudFront first via `npm run build` output in `dist/`; Amplify Hosting remains a later migration option if its familiar GitHub-connected workflow becomes preferable
-- Later planned area: deployed access control before real data
+- Later planned area: stronger identity/cloud persistence only if needed
 
 ## Requirements
 
@@ -123,7 +123,7 @@ Use fake/example data only while testing this public repo workflow. Real financi
 
 Use this workflow for a low-cost S3 + CloudFront static deploy. Keep real bucket names, CloudFront distribution IDs, deployed API URLs, API keys, and custom domains out of committed files unless you intentionally decide they are public-safe.
 
-The deployed backend API must already exist from the sibling `financials-api` SAM stack. Static hosting should use `ephemeral` session mode until the next access-control step adds deployed API protection; use fake data only before then.
+The deployed backend API must already exist from the sibling `financials-api` SAM stack. Static hosting should use `ephemeral` session mode until stronger identity/cloud persistence exists; use fake data only with the shared-token gate, and do not use real financial data until you are comfortable with the deployed protection model.
 
 1. Copy the production placeholder config locally:
 
@@ -131,12 +131,15 @@ The deployed backend API must already exist from the sibling `financials-api` SA
    Copy-Item .env.production.example .env.production
    ```
 
-2. Edit `.env.production` with your deployed API Gateway base URL and ephemeral mode:
+2. Edit `.env.production` with your deployed API Gateway base URL, ephemeral mode, and the shared token configured on the matching API stack:
 
    ```env
    VITE_FINANCIALS_API_BASE_URL=https://<api-id>.execute-api.<aws-region>.amazonaws.com
    VITE_FINANCIALS_SESSION_MODE=ephemeral
+   VITE_FINANCIALS_ACCESS_TOKEN=<private-access-token>
    ```
+
+   `VITE_FINANCIALS_ACCESS_TOKEN` is bundled into the static files. It is a pragmatic personal-use blocker that keeps unauthenticated requests from succeeding, not true user identity or a replacement for Cognito/OIDC if the app later needs stronger auth.
 
 3. Build the static app:
 

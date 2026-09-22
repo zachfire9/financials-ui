@@ -75,6 +75,7 @@ type ApiErrorBody = {
 }
 
 const apiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_FINANCIALS_API_BASE_URL)
+const apiAccessToken = normalizeAccessToken(import.meta.env.VITE_FINANCIALS_ACCESS_TOKEN)
 
 export async function listFinancialItems(): Promise<FinancialItem[]> {
   return request<FinancialItem[]>('/financial-items')
@@ -121,7 +122,9 @@ export async function calculateProjection(payload: ProjectionRequest): Promise<P
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, init)
+  const headers = buildRequestHeaders(init?.headers, apiAccessToken)
+  const requestInit = headers ? { ...init, headers } : init
+  const response = await fetch(`${apiBaseUrl}${path}`, requestInit)
 
   if (!response.ok) {
     throw new Error(await readApiError(response))
@@ -150,4 +153,29 @@ async function readApiError(response: Response) {
 export function normalizeApiBaseUrl(value: string | undefined) {
   const base = value?.trim() || '/api'
   return base.endsWith('/') ? base.slice(0, -1) : base
+}
+
+export function normalizeAccessToken(value: string | undefined) {
+  const token = value?.trim()
+  return token === '' ? undefined : token
+}
+
+export function buildRequestHeaders(headers: HeadersInit | undefined, accessToken: string | undefined) {
+  if (!headers && !accessToken) {
+    return undefined
+  }
+
+  let requestHeaders: Record<string, string>
+  if (headers instanceof Headers) {
+    requestHeaders = Object.fromEntries(headers.entries())
+  } else if (Array.isArray(headers)) {
+    requestHeaders = Object.fromEntries(headers)
+  } else {
+    requestHeaders = { ...(headers ?? {}) }
+  }
+
+  if (accessToken) {
+    requestHeaders['X-Financials-Access-Token'] = accessToken
+  }
+  return requestHeaders
 }
