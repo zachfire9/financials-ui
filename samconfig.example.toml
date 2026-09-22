@@ -1,0 +1,13 @@
+# Copy this file to samconfig.toml if you want a reusable local deploy config.
+# Keep real stack names, bucket names, domains, API URLs, and credentials out of git unless intentionally public-safe.
+version = 0.1
+
+[default.global.parameters]
+stack_name = "financials-ui-static-placeholder"
+region = "us-east-1"
+
+[default.deploy.parameters]
+resolve_s3 = true
+confirm_changeset = true
+fail_on_empty_changeset = false
+parameter_overrides = "PriceClass=PriceClass_100"
