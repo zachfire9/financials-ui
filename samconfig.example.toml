@@ -10,4 +10,4 @@ region = "us-east-1"
 resolve_s3 = true
 confirm_changeset = true
 fail_on_empty_changeset = false
-parameter_overrides = "PriceClass=PriceClass_100"
+parameter_overrides = "PriceClass=PriceClass_100 CustomDomainName=<custom-domain> CertificateArn=<us-east-1-acm-certificate-arn> CustomDomainHostedZoneId=<route53-hosted-zone-id>"
