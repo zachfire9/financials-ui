@@ -174,9 +174,11 @@ This repo includes `template.yaml` for creating the low-cost frontend hosting re
 - a private S3 bucket for built files
 - a CloudFront Origin Access Control
 - a CloudFront distribution
+- optional custom-domain aliases when `CustomDomainName` and `CertificateArn` are supplied
+- optional Route 53 A/AAAA alias records when `CustomDomainHostedZoneId` is supplied
 - a bucket policy allowing CloudFront read access only
 - SPA fallback behavior for browser routes
-- stack outputs for the bucket name, distribution ID, CloudFront domain, and CloudFront URL
+- stack outputs for the bucket name, distribution ID, CloudFront domain, default CloudFront URL, and optional custom-domain URL
 
 Validate the template if SAM is installed:
 
@@ -200,6 +202,16 @@ sam deploy --guided --profile zachfire9
 
 `samconfig.toml` is ignored so real local stack settings stay out of git. `samconfig.example.toml` is a placeholder-safe reference if you want to copy it locally.
 
+To manage a custom domain such as `financials.zachfirestone.com` through the frontend stack, first create and validate an ACM certificate for that domain in `us-east-1`; CloudFront cannot use certificates from other regions. Then deploy with private/local parameter values, not committed docs:
+
+```powershell
+sam deploy --profile zachfire9 --parameter-overrides PriceClass=PriceClass_100 CustomDomainName="<custom-domain>" CertificateArn="<us-east-1-acm-certificate-arn>" CustomDomainHostedZoneId="<route53-hosted-zone-id>"
+```
+
+`CustomDomainHostedZoneId` is optional. If it is blank, the stack configures the CloudFront alias and certificate only; create the Route 53 A/AAAA alias records separately. If it is supplied, the stack creates A and AAAA alias records that point the custom domain at the CloudFront distribution. Keep certificate ARNs, hosted zone IDs, stack names, real deployed domains, API URLs, and tokens in ignored local config or private operator notes unless you intentionally decide they are public-safe.
+
+When serving the UI from a custom domain, update the sibling API stack's CORS parameter so `FinancialsAllowedOrigins` includes the custom origin, for example `https://<custom-domain>`. During migration you can include both the generated CloudFront URL and the custom domain as a comma-separated value.
+
 After the stack deploys, inspect the outputs:
 
 ```powershell
@@ -215,7 +227,7 @@ npm run build
 .\scripts\deploy-static.ps1 -BucketName $bucket -DistributionId $distributionId -Profile zachfire9
 ```
 
-Optional custom domain resources such as ACM certificates and Route 53 aliases are intentionally deferred until a domain is chosen. The first deploy can use the generated CloudFront URL from the `FrontendUrl` output.
+Custom domain resources are optional. The generated CloudFront URL from `FrontendUrl` remains valid even when `FrontendCustomDomainUrl` is also present.
 
 Amplify Hosting remains a possible later migration if GitHub-connected deploys become worth the extra abstraction.
 
