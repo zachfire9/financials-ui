@@ -1,0 +1,120 @@
+name: Deploy Financials UI
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: financials-ui-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  FRONTEND_STACK_NAME: ${{ vars.FRONTEND_STACK_NAME || 'financials-ui' }}
+  DEPLOY_FRONTEND_INFRA: ${{ vars.DEPLOY_FRONTEND_INFRA || 'false' }}
+  PRICE_CLASS: ${{ vars.PRICE_CLASS || 'PriceClass_100' }}
+  CUSTOM_DOMAIN_NAME: ${{ vars.CUSTOM_DOMAIN_NAME }}
+  CERTIFICATE_ARN: ${{ vars.CERTIFICATE_ARN }}
+  CUSTOM_DOMAIN_HOSTED_ZONE_ID: ${{ vars.CUSTOM_DOMAIN_HOSTED_ZONE_ID }}
+  VITE_FINANCIALS_API_BASE_URL: ${{ vars.VITE_FINANCIALS_API_BASE_URL }}
+  VITE_FINANCIALS_SESSION_MODE: ${{ vars.VITE_FINANCIALS_SESSION_MODE || 'ephemeral' }}
+  VITE_FINANCIALS_ACCESS_TOKEN: ${{ secrets.FINANCIALS_ACCESS_TOKEN }}
+
+jobs:
+  deploy:
+    name: Test, build, and deploy UI assets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build static UI
+        run: npm run build
+
+      - name: Set up AWS SAM CLI
+        if: env.DEPLOY_FRONTEND_INFRA == 'true'
+        uses: aws-actions/setup-sam@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Optionally deploy frontend infrastructure
+        if: env.DEPLOY_FRONTEND_INFRA == 'true'
+        run: |
+          PARAMS=("PriceClass=$PRICE_CLASS")
+          if [ -n "$CUSTOM_DOMAIN_NAME" ]; then
+            PARAMS+=("CustomDomainName=$CUSTOM_DOMAIN_NAME")
+          fi
+          if [ -n "$CERTIFICATE_ARN" ]; then
+            PARAMS+=("CertificateArn=$CERTIFICATE_ARN")
+          fi
+          if [ -n "$CUSTOM_DOMAIN_HOSTED_ZONE_ID" ]; then
+            PARAMS+=("CustomDomainHostedZoneId=$CUSTOM_DOMAIN_HOSTED_ZONE_ID")
+          fi
+
+          sam deploy \
+            --stack-name "$FRONTEND_STACK_NAME" \
+            --region "$AWS_REGION" \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides "${PARAMS[@]}"
+
+      - name: Read frontend stack outputs
+        id: frontend_outputs
+        run: |
+          BUCKET_NAME=$(aws cloudformation describe-stacks \
+            --stack-name "$FRONTEND_STACK_NAME" \
+            --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='FrontendBucketName'].OutputValue | [0]" \
+            --output text)
+          DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
+            --stack-name "$FRONTEND_STACK_NAME" \
+            --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='FrontendDistributionId'].OutputValue | [0]" \
+            --output text)
+          FRONTEND_URL=$(aws cloudformation describe-stacks \
+            --stack-name "$FRONTEND_STACK_NAME" \
+            --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='FrontendCustomDomainUrl'].OutputValue | [0]" \
+            --output text)
+          if [ "$FRONTEND_URL" = "None" ] || [ -z "$FRONTEND_URL" ]; then
+            FRONTEND_URL=$(aws cloudformation describe-stacks \
+              --stack-name "$FRONTEND_STACK_NAME" \
+              --region "$AWS_REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='FrontendUrl'].OutputValue | [0]" \
+              --output text)
+          fi
+          echo "bucket_name=$BUCKET_NAME" >> "$GITHUB_OUTPUT"
+          echo "distribution_id=$DISTRIBUTION_ID" >> "$GITHUB_OUTPUT"
+          echo "frontend_url=$FRONTEND_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Sync static assets to S3
+        run: aws s3 sync dist "s3://${{ steps.frontend_outputs.outputs.bucket_name }}" --delete --region "$AWS_REGION"
+
+      - name: Invalidate CloudFront cache
+        run: aws cloudfront create-invalidation --distribution-id "${{ steps.frontend_outputs.outputs.distribution_id }}" --paths "/*"
+
+      - name: Smoke test deployed frontend
+        run: curl --fail --silent --show-error --head "${{ steps.frontend_outputs.outputs.frontend_url }}"
