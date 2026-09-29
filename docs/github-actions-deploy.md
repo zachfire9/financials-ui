@@ -80,19 +80,27 @@ If `DEPLOY_FRONTEND_INFRA=true`, the role also needs permissions to run `sam dep
 
 ## Workflow behavior
 
-On `push` to `master`, and on manual `workflow_dispatch`, the workflow:
+On `push` to `master`, and on manual `workflow_dispatch`, the workflow runs three separate jobs:
 
-1. Checks out the repo.
-2. Sets up Node 22.
-3. Runs `npm ci`.
-4. Runs `npm test` without deployed Vite environment overrides, so tests use their normal mocked/API-backed expectations.
-5. Builds the production Vite app with GitHub Variables/Secrets scoped to the build step.
-6. Assumes the AWS deploy role through OIDC.
-7. Optionally runs frontend `sam deploy` when `DEPLOY_FRONTEND_INFRA=true`.
-8. Reads the bucket, distribution ID, and frontend URL from CloudFormation outputs.
-9. Syncs `dist/` to the S3 bucket with `--delete`.
-10. Invalidates CloudFront with `/*`.
-11. Smoke-tests the deployed frontend URL with `curl --head`.
+1. `Test UI`
+   - Checks out the repo.
+   - Sets up Node 22.
+   - Runs `npm ci`.
+   - Runs `npm test` without deployed Vite environment overrides, so tests use their normal mocked/API-backed expectations.
+2. `Build UI`
+   - Runs after tests pass.
+   - Checks out the repo and installs dependencies.
+   - Builds the production Vite app with GitHub Variables/Secrets scoped to the build step.
+   - Uploads `dist/` as the `financials-ui-dist` artifact.
+3. `Deploy UI assets`
+   - Runs after the build succeeds.
+   - Downloads the `financials-ui-dist` artifact.
+   - Assumes the AWS deploy role through OIDC.
+   - Optionally runs frontend `sam deploy` when `DEPLOY_FRONTEND_INFRA=true`.
+   - Reads the bucket, distribution ID, and frontend URL from CloudFormation outputs.
+   - Syncs `dist/` to the S3 bucket with `--delete`.
+   - Invalidates CloudFront with `/*`.
+   - Smoke-tests the deployed frontend URL with `curl --head`.
 
 ## Rollback
 
