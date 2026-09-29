@@ -10,12 +10,13 @@ Add these repository settings in GitHub before enabling the workflow.
 
 ### Secrets
 
-- `AWS_DEPLOY_ROLE_ARN`: ARN of the AWS IAM role that GitHub Actions can assume for this repo.
 - `FINANCIALS_ACCESS_TOKEN`: private shared token passed to Vite as `VITE_FINANCIALS_ACCESS_TOKEN` during the production build.
 
 ### Variables
 
 Required:
+
+- `AWS_DEPLOY_ROLE_ARN`: ARN of the AWS IAM role that GitHub Actions can assume for this repo. Role ARNs are identifiers, not credentials, and keeping this as a variable makes OIDC wiring easier to audit.
 
 - `AWS_REGION`: AWS region for the frontend stack, for example `us-east-1`.
 - `FRONTEND_STACK_NAME`: CloudFormation stack name, for example `financials-ui`.
