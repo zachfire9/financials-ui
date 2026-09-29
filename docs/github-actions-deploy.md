@@ -39,7 +39,15 @@ GitHub Secrets keep `FINANCIALS_ACCESS_TOKEN` out of git and out of workflow log
 
 ## AWS OIDC role setup
 
-Use a trust policy scoped to this repository and `master` branch. Replace placeholders before applying:
+Use a trust policy scoped to this repository and `master` branch. This repository currently uses GitHub's immutable OIDC subject format, so the `sub` claim includes owner/repository immutable IDs instead of the default `repo:zachfire9/financials-ui` prefix.
+
+Observed `master` claim from GitHub Actions:
+
+```text
+repo:zachfire9@373494/financials-ui@105614969:ref:refs/heads/master
+```
+
+Trust policy shape:
 
 ```json
 {
@@ -54,7 +62,7 @@ Use a trust policy scoped to this repository and `master` branch. Replace placeh
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:zachfire9/financials-ui:ref:refs/heads/master"
+          "token.actions.githubusercontent.com:sub": "repo:zachfire9@373494/financials-ui@105614969:ref:refs/heads/master"
         }
       }
     }

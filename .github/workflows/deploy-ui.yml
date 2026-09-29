@@ -54,26 +54,6 @@ jobs:
         if: env.DEPLOY_FRONTEND_INFRA == 'true'
         uses: aws-actions/setup-sam@v2
 
-      - name: Debug safe OIDC and role wiring
-        env:
-          DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN || secrets.AWS_DEPLOY_ROLE_ARN }}
-        run: |
-          echo "deploy_role_name=${DEPLOY_ROLE_ARN##*/}"
-          echo "deploy_role_arn_sha256=$(printf '%s' "$DEPLOY_ROLE_ARN" | sha256sum | cut -d' ' -f1)"
-          TOKEN_JSON=$(curl --fail --silent --show-error \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
-          TOKEN=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$TOKEN_JSON")
-          python3 - <<'PY' "$TOKEN"
-          import base64, json, sys
-          token = sys.argv[1]
-          payload = token.split('.')[1]
-          payload += '=' * (-len(payload) % 4)
-          claims = json.loads(base64.urlsafe_b64decode(payload))
-          for key in ['aud', 'sub', 'repository', 'repository_owner', 'repository_id', 'ref', 'ref_type', 'workflow', 'workflow_ref', 'job_workflow_ref', 'event_name', 'actor']:
-              if key in claims:
-                  print(f'oidc_{key}: {claims[key]}')
-          PY
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
