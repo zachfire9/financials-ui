@@ -167,6 +167,41 @@ Suggested AWS shape:
 - SPA fallback maps CloudFront 403/404 responses to `index.html` so direct browser refreshes work.
 - Configure the API stack's CORS allowed origins with the CloudFront/static site origin, using deploy parameters instead of committed real values.
 
+### AWS request flow
+
+```mermaid
+flowchart LR
+  user[Browser user] -->|https://financials.zachfirestone.com| r53[Route 53 alias record]
+  r53 --> cf[CloudFront distribution]
+  acm[ACM certificate<br/>us-east-1] -->|TLS certificate| cf
+  cf -->|S3 origin request<br/>signed by OAC| s3[(Private S3 bucket<br/>built React/Vite assets)]
+  s3policy[S3 bucket policy<br/>allows CloudFront distribution only] --> s3
+  oac[CloudFront Origin Access Control] -->|SigV4 access| cf
+  cf -->|index.html / JS / CSS| user
+  user -->|API calls with configured origin<br/>and shared access header| apigw[API Gateway HTTP API<br/>financials-api stack]
+  apigw --> lambda[AWS Lambda<br/>Go Financials API]
+  lambda --> session[Ephemeral browser-owned session mode<br/>fake-data/personal-use testing]
+
+  classDef dns fill:#eef2ff,stroke:#6366f1,color:#111827;
+  classDef edge fill:#ecfeff,stroke:#0891b2,color:#111827;
+  classDef storage fill:#f0fdf4,stroke:#16a34a,color:#111827;
+  classDef api fill:#fff7ed,stroke:#ea580c,color:#111827;
+  classDef security fill:#fff1f2,stroke:#e11d48,color:#111827;
+  class user dns;
+  class r53 dns;
+  class cf,oac edge;
+  class s3,s3policy storage;
+  class apigw,lambda,session api;
+  class acm security;
+```
+
+Key points:
+
+- Route 53 points the custom domain at CloudFront; CloudFront uses the ACM certificate for HTTPS.
+- CloudFront is the only public reader of the private S3 bucket; Origin Access Control plus the bucket policy keep the bucket private.
+- The React app is static, so API calls still go from the browser to the sibling `financials-api` API Gateway endpoint.
+- The API stack must allow the custom UI origin in CORS and must receive the shared access header configured at build time.
+
 ### SAM-managed frontend infrastructure
 
 This repo includes `template.yaml` for creating the low-cost frontend hosting resources with SAM/CloudFormation. The template creates:
@@ -174,9 +209,11 @@ This repo includes `template.yaml` for creating the low-cost frontend hosting re
 - a private S3 bucket for built files
 - a CloudFront Origin Access Control
 - a CloudFront distribution
+- optional custom-domain aliases when `CustomDomainName` and `CertificateArn` are supplied
+- optional Route 53 A/AAAA alias records when `CustomDomainHostedZoneId` is supplied
 - a bucket policy allowing CloudFront read access only
 - SPA fallback behavior for browser routes
-- stack outputs for the bucket name, distribution ID, CloudFront domain, and CloudFront URL
+- stack outputs for the bucket name, distribution ID, CloudFront domain, default CloudFront URL, and optional custom-domain URL
 
 Validate the template if SAM is installed:
 
@@ -200,6 +237,16 @@ sam deploy --guided --profile zachfire9
 
 `samconfig.toml` is ignored so real local stack settings stay out of git. `samconfig.example.toml` is a placeholder-safe reference if you want to copy it locally.
 
+To manage a custom domain such as `financials.zachfirestone.com` through the frontend stack, first create and validate an ACM certificate for that domain in `us-east-1`; CloudFront cannot use certificates from other regions. Then deploy with private/local parameter values, not committed docs:
+
+```powershell
+sam deploy --profile zachfire9 --parameter-overrides PriceClass=PriceClass_100 CustomDomainName="<custom-domain>" CertificateArn="<us-east-1-acm-certificate-arn>" CustomDomainHostedZoneId="<route53-hosted-zone-id>"
+```
+
+`CustomDomainHostedZoneId` is optional. If it is blank, the stack configures the CloudFront alias and certificate only; create the Route 53 A/AAAA alias records separately. If it is supplied, the stack creates A and AAAA alias records that point the custom domain at the CloudFront distribution. Keep certificate ARNs, hosted zone IDs, stack names, real deployed domains, API URLs, and tokens in ignored local config or private operator notes unless you intentionally decide they are public-safe.
+
+When serving the UI from a custom domain, update the sibling API stack's CORS parameter so `FinancialsAllowedOrigins` includes the custom origin, for example `https://<custom-domain>`. During migration you can include both the generated CloudFront URL and the custom domain as a comma-separated value.
+
 After the stack deploys, inspect the outputs:
 
 ```powershell
@@ -215,7 +262,7 @@ npm run build
 .\scripts\deploy-static.ps1 -BucketName $bucket -DistributionId $distributionId -Profile zachfire9
 ```
 
-Optional custom domain resources such as ACM certificates and Route 53 aliases are intentionally deferred until a domain is chosen. The first deploy can use the generated CloudFront URL from the `FrontendUrl` output.
+Custom domain resources are optional. The generated CloudFront URL from `FrontendUrl` remains valid even when `FrontendCustomDomainUrl` is also present.
 
 Amplify Hosting remains a possible later migration if GitHub-connected deploys become worth the extra abstraction.
 
