@@ -54,6 +54,28 @@ jobs:
         if: env.DEPLOY_FRONTEND_INFRA == 'true'
         uses: aws-actions/setup-sam@v2
 
+      - name: Debug safe OIDC claims
+        run: |
+          TOKEN_JSON=$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
+          TOKEN=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$TOKEN_JSON")
+          python3 - <<'PY' "$TOKEN"
+          import base64, json, sys
+          token = sys.argv[1]
+          payload = token.split('.')[1]
+          payload += '=' * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          safe_keys = [
+              'aud', 'sub', 'repository', 'repository_owner', 'repository_id',
+              'ref', 'ref_type', 'workflow', 'workflow_ref', 'job_workflow_ref',
+              'event_name', 'actor'
+          ]
+          for key in safe_keys:
+              if key in claims:
+                  print(f'{key}: {claims[key]}')
+          PY
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
