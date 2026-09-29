@@ -204,6 +204,8 @@ Key points:
 
 ### SAM-managed frontend infrastructure
 
+GitHub Actions deployment setup is documented in [GitHub Actions UI deploy](docs/github-actions-deploy.md). The workflow uses AWS OIDC and GitHub Secrets/Variables so deploy credentials and build-time tokens stay out of git.
+
 This repo includes `template.yaml` for creating the low-cost frontend hosting resources with SAM/CloudFormation. The template creates:
 
 - a private S3 bucket for built files
