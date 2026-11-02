@@ -274,6 +274,33 @@ describe('Financial items app', () => {
     ])
   })
 
+  it('rejects an imported backup with invalid items and keeps the current session', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+
+    render(<App />)
+
+    addSessionItem('Existing account')
+    await screen.findByText('Existing account')
+
+    const backup = {
+      schemaVersion: 1,
+      exportedAt: '2026-01-03T00:00:00Z',
+      items: [
+        exampleItem,
+        { ...exampleItem, id: 'item_000002', name: 'Broken item', currency: 'US', amountCents: undefined },
+      ],
+    }
+    const file = new File([JSON.stringify(backup)], 'financials-backup.json', { type: 'application/json' })
+    fireEvent.change(screen.getByLabelText(/import json backup/i), { target: { files: [file] } })
+
+    const error = await screen.findByText(/could not import backup/i)
+    expect(error).toHaveTextContent('Item 2: amountCents must be a whole number of cents, 0 or more.')
+    expect(error).toHaveTextContent('Item 2: currency must be a 3-letter code such as USD.')
+    expect(screen.getByText('Existing account')).toBeInTheDocument()
+    expect(screen.queryByText('Example brokerage')).not.toBeInTheDocument()
+  })
+
   it('exports ephemeral browser-owned data without calling the backup API', async () => {
     vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
     const createObjectURL = vi.fn().mockReturnValue('blob:financial-backup')
@@ -456,6 +483,40 @@ describe('Financial items app', () => {
       annualWithdrawalCents: 6000000,
       annualWithdrawalInflationRateBasisPoints: 300,
     })
+  })
+
+  it('rejects a currency that is not a 3-letter code', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse([]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.change(await screen.findByLabelText(/name/i), { target: { value: 'Example account' } })
+    fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '1000' } })
+    fireEvent.change(screen.getByLabelText(/^currency$/i), { target: { value: 'us' } })
+    fireEvent.change(screen.getByLabelText(/^annual return \(%\)$/i), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+
+    expect(await screen.findByText('Use a 3-letter currency code like USD.')).toBeInTheDocument()
+    expect(screen.getByLabelText(/^currency$/i)).toHaveValue('US')
+    expect(screen.getByLabelText(/^currency$/i)).toHaveAttribute('aria-invalid', 'true')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows plain-text amounts instead of crashing on an unknown currency format', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([exampleItem]))
+      .mockResolvedValueOnce(jsonResponse({ ...exampleProjection, currency: 'U$' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /calculate projection/i }))
+
+    expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
+    expect(screen.getAllByText('3,389.56 U$').length).toBeGreaterThan(0)
   })
 
   it('updates and deletes existing financial items', async () => {

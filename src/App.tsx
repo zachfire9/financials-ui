@@ -26,7 +26,7 @@ const emptyForm = {
 
 type FormState = typeof emptyForm
 
-type ItemNumberField = 'amount' | 'annualReturnRate' | 'drawdownAnnualReturnRate' | 'annualContribution'
+type ItemField = 'amount' | 'currency' | 'annualReturnRate' | 'drawdownAnnualReturnRate' | 'annualContribution'
 type ProjectionField = 'savingYears' | 'drawdownYears' | 'annualWithdrawal' | 'withdrawalInflationRate'
 type FieldErrors<Field extends string> = Partial<Record<Field, string>>
 
@@ -35,6 +35,8 @@ const dollarAmountError = 'Enter a dollar amount like 1,000 or 1000.50.'
 const signedPercentError = 'Enter a percentage like 7 or -2.5.'
 const percentError = 'Enter a percentage of 0 or more, like 3.'
 const yearsError = `Enter a whole number of years from 0 to ${maximumProjectionYears}.`
+const currencyError = 'Use a 3-letter currency code like USD.'
+const currencyCodePattern = /^[A-Z]{3}$/
 
 function App() {
   const isEphemeralSession = isEphemeralSessionMode()
@@ -54,7 +56,7 @@ function App() {
   const [staleMessage, setStaleMessage] = useState<string | null>(null)
   const [backupMessage, setBackupMessage] = useState<string | null>(null)
   const [projectionMessage, setProjectionMessage] = useState<string | null>(null)
-  const [itemFieldErrors, setItemFieldErrors] = useState<FieldErrors<ItemNumberField>>({})
+  const [itemFieldErrors, setItemFieldErrors] = useState<FieldErrors<ItemField>>({})
   const [projectionFieldErrors, setProjectionFieldErrors] = useState<FieldErrors<ProjectionField>>({})
   // Highest session-item number handed out in this browser session, so IDs of
   // deleted items are never reused.
@@ -196,7 +198,7 @@ function App() {
     return sessionItemID(next)
   }
 
-  function updateItemNumberField(field: ItemNumberField, value: string) {
+  function updateItemField(field: ItemField, value: string) {
     setForm((currentForm) => ({ ...currentForm, [field]: value }))
     setItemFieldErrors((currentErrors) => withoutField(currentErrors, field))
   }
@@ -356,7 +358,7 @@ function App() {
                 <input
                   inputMode="decimal"
                   value={form.amount}
-                  onChange={(event) => updateItemNumberField('amount', event.target.value)}
+                  onChange={(event) => updateItemField('amount', event.target.value)}
                   placeholder="10000.00"
                   required
                   aria-invalid={itemFieldErrors.amount ? true : undefined}
@@ -365,15 +367,20 @@ function App() {
               </label>
               <FieldError id="amount-error" message={itemFieldErrors.amount} />
             </div>
-            <label>
-              Currency
-              <input
-                value={form.currency}
-                onChange={(event) => setForm({ ...form, currency: event.target.value.toUpperCase() })}
-                maxLength={3}
-                required
-              />
-            </label>
+            <div className="form-field">
+              <label>
+                Currency
+                <input
+                  value={form.currency}
+                  onChange={(event) => updateItemField('currency', event.target.value.toUpperCase())}
+                  maxLength={3}
+                  required
+                  aria-invalid={itemFieldErrors.currency ? true : undefined}
+                  aria-describedby={itemFieldErrors.currency ? 'currency-error' : undefined}
+                />
+              </label>
+              <FieldError id="currency-error" message={itemFieldErrors.currency} />
+            </div>
           </div>
 
           <div className="form-row">
@@ -383,7 +390,7 @@ function App() {
                 <input
                   inputMode="decimal"
                   value={form.annualReturnRate}
-                  onChange={(event) => updateItemNumberField('annualReturnRate', event.target.value)}
+                  onChange={(event) => updateItemField('annualReturnRate', event.target.value)}
                   placeholder="7.00"
                   required
                   aria-invalid={itemFieldErrors.annualReturnRate ? true : undefined}
@@ -398,7 +405,7 @@ function App() {
                 <input
                   inputMode="decimal"
                   value={form.drawdownAnnualReturnRate}
-                  onChange={(event) => updateItemNumberField('drawdownAnnualReturnRate', event.target.value)}
+                  onChange={(event) => updateItemField('drawdownAnnualReturnRate', event.target.value)}
                   placeholder="Uses annual return when blank"
                   aria-invalid={itemFieldErrors.drawdownAnnualReturnRate ? true : undefined}
                   aria-describedby={itemFieldErrors.drawdownAnnualReturnRate ? 'drawdown-return-error' : undefined}
@@ -413,7 +420,7 @@ function App() {
                 <input
                   inputMode="decimal"
                   value={form.annualContribution}
-                  onChange={(event) => updateItemNumberField('annualContribution', event.target.value)}
+                  onChange={(event) => updateItemField('annualContribution', event.target.value)}
                   placeholder="3000.00"
                   required
                   aria-invalid={itemFieldErrors.annualContribution ? true : undefined}
@@ -728,6 +735,11 @@ function backupItemsFromJSON(backup: FinancialItemsBackup) {
   if (!backup || !Array.isArray(backup.items)) {
     throw new Error('Backup JSON must include an items array.')
   }
+  const problems = backup.items.flatMap((item, index) => importedItemProblems(item, index))
+  if (problems.length > 0) {
+    const shown = problems.slice(0, 3).join(' ')
+    throw new Error(problems.length > 3 ? `${shown} (and ${problems.length - 3} more problems)` : shown)
+  }
 
   // Keep each ID the first time it appears. Missing or repeated IDs get new
   // numbers above the highest session-item number in the file.
@@ -746,11 +758,62 @@ function backupItemsFromJSON(backup: FinancialItemsBackup) {
       seenIDs.add(freshID)
       return freshID
     })(),
+    drawdownAnnualReturnRateBasisPoints: item.drawdownAnnualReturnRateBasisPoints ?? undefined,
     inflateAnnualContribution: item.inflateAnnualContribution ?? false,
     sortOrder: item.sortOrder ?? index,
     createdAt: item.createdAt || new Date().toISOString(),
     updatedAt: item.updatedAt || new Date().toISOString(),
   }))
+}
+
+const minimumReturnRateBasisPoints = -10000
+const maximumReturnRateBasisPoints = 100000
+
+// Checks one imported backup item against the same rules the API enforces, so
+// a hand-edited or corrupted file is rejected with a clear message instead of
+// loading data that can't be displayed or projected.
+function importedItemProblems(item: unknown, index: number): string[] {
+  const label = `Item ${index + 1}:`
+  if (!item || typeof item !== 'object' || Array.isArray(item)) {
+    return [`${label} must be an object.`]
+  }
+
+  const value = item as Record<string, unknown>
+  const problems: string[] = []
+  const isInteger = (field: string) => Number.isInteger(value[field])
+  const isMissing = (field: string) => value[field] === undefined || value[field] === null
+
+  if (typeof value.name !== 'string' || value.name.trim() === '') {
+    problems.push(`${label} name is required.`)
+  }
+  if (!isInteger('amountCents') || (value.amountCents as number) < 0) {
+    problems.push(`${label} amountCents must be a whole number of cents, 0 or more.`)
+  }
+  if (typeof value.currency !== 'string' || !currencyCodePattern.test(value.currency)) {
+    problems.push(`${label} currency must be a 3-letter code such as USD.`)
+  }
+  for (const field of ['annualReturnRateBasisPoints', 'drawdownAnnualReturnRateBasisPoints']) {
+    if (field === 'drawdownAnnualReturnRateBasisPoints' && isMissing(field)) {
+      continue
+    }
+    const rate = value[field] as number
+    if (!isInteger(field) || rate < minimumReturnRateBasisPoints || rate > maximumReturnRateBasisPoints) {
+      problems.push(
+        `${label} ${field} must be a whole number from ${minimumReturnRateBasisPoints} to ${maximumReturnRateBasisPoints}.`,
+      )
+    }
+  }
+  if (!isInteger('annualContributionCents') || (value.annualContributionCents as number) < 0) {
+    problems.push(`${label} annualContributionCents must be a whole number of cents, 0 or more.`)
+  }
+  if (!isMissing('sortOrder') && (!isInteger('sortOrder') || (value.sortOrder as number) < 0)) {
+    problems.push(`${label} sortOrder must be a whole number, 0 or more.`)
+  }
+  if (!isMissing('inflateAnnualContribution') && typeof value.inflateAnnualContribution !== 'boolean') {
+    problems.push(`${label} inflateAnnualContribution must be true or false.`)
+  }
+
+  return problems
 }
 
 function backupFromItems(items: FinancialItem[]): FinancialItemsBackup {
@@ -798,8 +861,8 @@ function isEphemeralSessionMode() {
 function validateItemForm(
   form: FormState,
   sortOrder: number,
-): { payload: FinancialItemPayload | null; errors: FieldErrors<ItemNumberField> } {
-  const errors: FieldErrors<ItemNumberField> = {}
+): { payload: FinancialItemPayload | null; errors: FieldErrors<ItemField> } {
+  const errors: FieldErrors<ItemField> = {}
   const amountCents = parseHundredths(form.amount)
   const annualReturnRateBasisPoints = parseHundredths(form.annualReturnRate, { allowNegative: true })
   const hasDrawdownRate = form.drawdownAnnualReturnRate.trim() !== ''
@@ -807,8 +870,10 @@ function validateItemForm(
     ? parseHundredths(form.drawdownAnnualReturnRate, { allowNegative: true })
     : null
   const annualContributionCents = parseHundredths(form.annualContribution)
+  const currency = form.currency.trim().toUpperCase()
 
   if (amountCents === null) errors.amount = dollarAmountError
+  if (!currencyCodePattern.test(currency)) errors.currency = currencyError
   if (annualReturnRateBasisPoints === null) errors.annualReturnRate = signedPercentError
   if (hasDrawdownRate && drawdownAnnualReturnRateBasisPoints === null) errors.drawdownAnnualReturnRate = signedPercentError
   if (annualContributionCents === null) errors.annualContribution = dollarAmountError
@@ -820,7 +885,7 @@ function validateItemForm(
   const payload: FinancialItemPayload = {
     name: form.name.trim(),
     amountCents,
-    currency: form.currency.trim().toUpperCase(),
+    currency,
     annualReturnRateBasisPoints,
     annualContributionCents,
     inflateAnnualContribution: form.inflateAnnualContribution,
@@ -923,10 +988,17 @@ function basisPointsToPercentInput(value: number) {
 }
 
 function formatCurrency(cents: number, currency: string) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-  }).format(cents / 100)
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+    }).format(cents / 100)
+  } catch {
+    // Intl throws on malformed currency codes; show plain text instead of
+    // crashing the page.
+    const amount = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100)
+    return `${amount} ${currency}`.trim()
+  }
 }
 
 function formatRate(basisPoints: number) {

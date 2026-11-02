@@ -381,3 +381,16 @@ input[aria-invalid='true'] {
   border-color: #dc2626;
   box-shadow: 0 0 0 1px #dc2626;
 }
+
+.crash-panel {
+  background: #ffffff;
+  border: 1px solid #fecaca;
+  border-radius: 20px;
+  margin: 2rem auto;
+  max-width: 560px;
+  padding: 1.5rem;
+}
+
+.crash-panel p {
+  color: #526174;
+}
