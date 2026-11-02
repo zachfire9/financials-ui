@@ -12,6 +12,7 @@ import {
   Projection,
   updateFinancialItem,
 } from './financialItemsApi'
+import { parseHundredths, parseWholeNumber } from './numberInput'
 
 const emptyForm = {
   name: '',
@@ -24,6 +25,16 @@ const emptyForm = {
 }
 
 type FormState = typeof emptyForm
+
+type ItemNumberField = 'amount' | 'annualReturnRate' | 'drawdownAnnualReturnRate' | 'annualContribution'
+type ProjectionField = 'savingYears' | 'drawdownYears' | 'annualWithdrawal' | 'withdrawalInflationRate'
+type FieldErrors<Field extends string> = Partial<Record<Field, string>>
+
+const maximumProjectionYears = 75
+const dollarAmountError = 'Enter a dollar amount like 1,000 or 1000.50.'
+const signedPercentError = 'Enter a percentage like 7 or -2.5.'
+const percentError = 'Enter a percentage of 0 or more, like 3.'
+const yearsError = `Enter a whole number of years from 0 to ${maximumProjectionYears}.`
 
 function App() {
   const isEphemeralSession = isEphemeralSessionMode()
@@ -43,6 +54,8 @@ function App() {
   const [staleMessage, setStaleMessage] = useState<string | null>(null)
   const [backupMessage, setBackupMessage] = useState<string | null>(null)
   const [projectionMessage, setProjectionMessage] = useState<string | null>(null)
+  const [itemFieldErrors, setItemFieldErrors] = useState<FieldErrors<ItemNumberField>>({})
+  const [projectionFieldErrors, setProjectionFieldErrors] = useState<FieldErrors<ProjectionField>>({})
   // Highest session-item number handed out in this browser session, so IDs of
   // deleted items are never reused.
   const lastSessionItemNumber = useRef(0)
@@ -133,6 +146,12 @@ function App() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const { payload, errors } = validateItemForm(form, editingItem ? editingItem.sortOrder : nextSortOrder(items))
+    setItemFieldErrors(errors)
+    if (!payload) {
+      return
+    }
+
     setIsSaving(true)
     setErrorMessage(null)
     setStaleMessage(null)
@@ -140,17 +159,14 @@ function App() {
     try {
       if (editingItemId && editingItem) {
         if (isEphemeralSession) {
-          const updatedItem = localItemFromPayload(formToPayload(form, editingItem.sortOrder), editingItem.id, editingItem.createdAt)
+          const updatedItem = localItemFromPayload(payload, editingItem.id, editingItem.createdAt)
           setItems((currentItems) =>
             currentItems
               .map((item) => (item.id === updatedItem.id ? updatedItem : item))
               .sort(compareFinancialItems),
           )
         } else {
-          const updatedItem = await updateFinancialItem(
-            editingItemId,
-            formToPayload(form, editingItem.sortOrder),
-          )
+          const updatedItem = await updateFinancialItem(editingItemId, payload)
           setItems((currentItems) =>
             currentItems
               .map((item) => (item.id === updatedItem.id ? updatedItem : item))
@@ -159,10 +175,10 @@ function App() {
         }
       } else {
         if (isEphemeralSession) {
-          const createdItem = localItemFromPayload(formToPayload(form, nextSortOrder(items)), issueSessionItemID(items))
+          const createdItem = localItemFromPayload(payload, issueSessionItemID(items))
           setItems((currentItems) => [...currentItems, createdItem].sort(compareFinancialItems))
         } else {
-          const createdItem = await createFinancialItem(formToPayload(form, nextSortOrder(items)))
+          const createdItem = await createFinancialItem(payload)
           setItems((currentItems) => [...currentItems, createdItem].sort(compareFinancialItems))
         }
       }
@@ -178,6 +194,16 @@ function App() {
     const next = Math.max(lastSessionItemNumber.current, highestSessionItemNumber(currentItems)) + 1
     lastSessionItemNumber.current = next
     return sessionItemID(next)
+  }
+
+  function updateItemNumberField(field: ItemNumberField, value: string) {
+    setForm((currentForm) => ({ ...currentForm, [field]: value }))
+    setItemFieldErrors((currentErrors) => withoutField(currentErrors, field))
+  }
+
+  function updateProjectionField(field: ProjectionField, value: string, setValue: (value: string) => void) {
+    setValue(value)
+    setProjectionFieldErrors((currentErrors) => withoutField(currentErrors, field))
   }
 
   async function handleDelete(item: FinancialItem) {
@@ -198,6 +224,7 @@ function App() {
   }
 
   function startEditing(item: FinancialItem) {
+    setItemFieldErrors({})
     setEditingItemId(item.id)
     setForm({
       name: item.name,
@@ -214,6 +241,7 @@ function App() {
   }
 
   function resetForm() {
+    setItemFieldErrors({})
     setEditingItemId(null)
     setForm(emptyForm)
   }
@@ -268,16 +296,24 @@ function App() {
 
   async function handleProjectionSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const { request: projectionInputs, errors } = validateProjectionForm({
+      savingYears: projectionSavingYears,
+      drawdownYears: projectionDrawdownYears,
+      annualWithdrawal: projectionAnnualWithdrawal,
+      withdrawalInflationRate: projectionWithdrawalInflationRate,
+    })
+    setProjectionFieldErrors(errors)
+    if (!projectionInputs) {
+      return
+    }
+
     setIsCalculatingProjection(true)
     setErrorMessage(null)
     setProjectionMessage(null)
 
     try {
       const projectionRequest = {
-        savingYears: Number.parseInt(projectionSavingYears, 10),
-        drawdownYears: Number.parseInt(projectionDrawdownYears || '0', 10),
-        annualWithdrawalCents: dollarsToCents(projectionAnnualWithdrawal),
-        annualWithdrawalInflationRateBasisPoints: percentToBasisPoints(projectionWithdrawalInflationRate),
+        ...projectionInputs,
         ...(isEphemeralSession ? { items: items.map(itemToPayload) } : {}),
       }
       const nextProjection = await calculateProjection(projectionRequest)
@@ -314,16 +350,21 @@ function App() {
           </label>
 
           <div className="form-row">
-            <label>
-              Current amount
-              <input
-                inputMode="decimal"
-                value={form.amount}
-                onChange={(event) => setForm({ ...form, amount: event.target.value })}
-                placeholder="10000.00"
-                required
-              />
-            </label>
+            <div className="form-field">
+              <label>
+                Current amount
+                <input
+                  inputMode="decimal"
+                  value={form.amount}
+                  onChange={(event) => updateItemNumberField('amount', event.target.value)}
+                  placeholder="10000.00"
+                  required
+                  aria-invalid={itemFieldErrors.amount ? true : undefined}
+                  aria-describedby={itemFieldErrors.amount ? 'amount-error' : undefined}
+                />
+              </label>
+              <FieldError id="amount-error" message={itemFieldErrors.amount} />
+            </div>
             <label>
               Currency
               <input
@@ -336,36 +377,51 @@ function App() {
           </div>
 
           <div className="form-row">
-            <label>
-              Annual return (%)
-              <input
-                inputMode="decimal"
-                value={form.annualReturnRate}
-                onChange={(event) => setForm({ ...form, annualReturnRate: event.target.value })}
-                placeholder="7.00"
-                required
-              />
-            </label>
-            <label>
-              Drawdown return (%)
-              <input
-                inputMode="decimal"
-                value={form.drawdownAnnualReturnRate}
-                onChange={(event) => setForm({ ...form, drawdownAnnualReturnRate: event.target.value })}
-                placeholder="Uses annual return when blank"
-              />
-              <span className="field-help">Uses annual return when blank.</span>
-            </label>
-            <label>
-              Annual contribution
-              <input
-                inputMode="decimal"
-                value={form.annualContribution}
-                onChange={(event) => setForm({ ...form, annualContribution: event.target.value })}
-                placeholder="3000.00"
-                required
-              />
-            </label>
+            <div className="form-field">
+              <label>
+                Annual return (%)
+                <input
+                  inputMode="decimal"
+                  value={form.annualReturnRate}
+                  onChange={(event) => updateItemNumberField('annualReturnRate', event.target.value)}
+                  placeholder="7.00"
+                  required
+                  aria-invalid={itemFieldErrors.annualReturnRate ? true : undefined}
+                  aria-describedby={itemFieldErrors.annualReturnRate ? 'annual-return-error' : undefined}
+                />
+              </label>
+              <FieldError id="annual-return-error" message={itemFieldErrors.annualReturnRate} />
+            </div>
+            <div className="form-field">
+              <label>
+                Drawdown return (%)
+                <input
+                  inputMode="decimal"
+                  value={form.drawdownAnnualReturnRate}
+                  onChange={(event) => updateItemNumberField('drawdownAnnualReturnRate', event.target.value)}
+                  placeholder="Uses annual return when blank"
+                  aria-invalid={itemFieldErrors.drawdownAnnualReturnRate ? true : undefined}
+                  aria-describedby={itemFieldErrors.drawdownAnnualReturnRate ? 'drawdown-return-error' : undefined}
+                />
+                <span className="field-help">Uses annual return when blank.</span>
+              </label>
+              <FieldError id="drawdown-return-error" message={itemFieldErrors.drawdownAnnualReturnRate} />
+            </div>
+            <div className="form-field">
+              <label>
+                Annual contribution
+                <input
+                  inputMode="decimal"
+                  value={form.annualContribution}
+                  onChange={(event) => updateItemNumberField('annualContribution', event.target.value)}
+                  placeholder="3000.00"
+                  required
+                  aria-invalid={itemFieldErrors.annualContribution ? true : undefined}
+                  aria-describedby={itemFieldErrors.annualContribution ? 'annual-contribution-error' : undefined}
+                />
+              </label>
+              <FieldError id="annual-contribution-error" message={itemFieldErrors.annualContribution} />
+            </div>
             <label className="checkbox-control">
               <input
                 type="checkbox"
@@ -474,48 +530,70 @@ function App() {
           </div>
 
           <form className="projection-controls" onSubmit={handleProjectionSubmit}>
-            <label>
-              Saving years
-              <input
-                inputMode="numeric"
-                min="0"
-                max="75"
-                required
-                value={projectionSavingYears}
-                onChange={(event) => setProjectionSavingYears(event.target.value)}
-              />
-            </label>
-            <label>
-              Drawdown years
-              <input
-                inputMode="numeric"
-                min="0"
-                max="75"
-                required
-                value={projectionDrawdownYears}
-                onChange={(event) => setProjectionDrawdownYears(event.target.value)}
-              />
-            </label>
-            <label>
-              Annual withdrawal
-              <input
-                inputMode="decimal"
-                value={projectionAnnualWithdrawal}
-                onChange={(event) => setProjectionAnnualWithdrawal(event.target.value)}
-                placeholder="60000.00"
-                required
-              />
-            </label>
-            <label>
-              Withdrawal inflation (%)
-              <input
-                inputMode="decimal"
-                value={projectionWithdrawalInflationRate}
-                onChange={(event) => setProjectionWithdrawalInflationRate(event.target.value)}
-                placeholder="3.00"
-                required
-              />
-            </label>
+            <div className="form-field">
+              <label>
+                Saving years
+                <input
+                  inputMode="numeric"
+                  min="0"
+                  max="75"
+                  required
+                  value={projectionSavingYears}
+                  onChange={(event) => updateProjectionField('savingYears', event.target.value, setProjectionSavingYears)}
+                  aria-invalid={projectionFieldErrors.savingYears ? true : undefined}
+                  aria-describedby={projectionFieldErrors.savingYears ? 'saving-years-error' : undefined}
+                />
+              </label>
+              <FieldError id="saving-years-error" message={projectionFieldErrors.savingYears} />
+            </div>
+            <div className="form-field">
+              <label>
+                Drawdown years
+                <input
+                  inputMode="numeric"
+                  min="0"
+                  max="75"
+                  required
+                  value={projectionDrawdownYears}
+                  onChange={(event) => updateProjectionField('drawdownYears', event.target.value, setProjectionDrawdownYears)}
+                  aria-invalid={projectionFieldErrors.drawdownYears ? true : undefined}
+                  aria-describedby={projectionFieldErrors.drawdownYears ? 'drawdown-years-error' : undefined}
+                />
+              </label>
+              <FieldError id="drawdown-years-error" message={projectionFieldErrors.drawdownYears} />
+            </div>
+            <div className="form-field">
+              <label>
+                Annual withdrawal
+                <input
+                  inputMode="decimal"
+                  value={projectionAnnualWithdrawal}
+                  onChange={(event) => updateProjectionField('annualWithdrawal', event.target.value, setProjectionAnnualWithdrawal)}
+                  placeholder="60000.00"
+                  required
+                  aria-invalid={projectionFieldErrors.annualWithdrawal ? true : undefined}
+                  aria-describedby={projectionFieldErrors.annualWithdrawal ? 'annual-withdrawal-error' : undefined}
+                />
+              </label>
+              <FieldError id="annual-withdrawal-error" message={projectionFieldErrors.annualWithdrawal} />
+            </div>
+            <div className="form-field">
+              <label>
+                Withdrawal inflation (%)
+                <input
+                  inputMode="decimal"
+                  value={projectionWithdrawalInflationRate}
+                  onChange={(event) =>
+                    updateProjectionField('withdrawalInflationRate', event.target.value, setProjectionWithdrawalInflationRate)
+                  }
+                  placeholder="3.00"
+                  required
+                  aria-invalid={projectionFieldErrors.withdrawalInflationRate ? true : undefined}
+                  aria-describedby={projectionFieldErrors.withdrawalInflationRate ? 'withdrawal-inflation-error' : undefined}
+                />
+              </label>
+              <FieldError id="withdrawal-inflation-error" message={projectionFieldErrors.withdrawalInflationRate} />
+            </div>
             <button type="submit" disabled={isCalculatingProjection || items.length === 0}>
               {isCalculatingProjection ? 'Calculating…' : 'Calculate projection'}
             </button>
@@ -717,22 +795,91 @@ function isEphemeralSessionMode() {
   return import.meta.env.VITE_FINANCIALS_SESSION_MODE?.trim().toLowerCase() === 'ephemeral'
 }
 
-function formToPayload(form: FormState, sortOrder: number): FinancialItemPayload {
+function validateItemForm(
+  form: FormState,
+  sortOrder: number,
+): { payload: FinancialItemPayload | null; errors: FieldErrors<ItemNumberField> } {
+  const errors: FieldErrors<ItemNumberField> = {}
+  const amountCents = parseHundredths(form.amount)
+  const annualReturnRateBasisPoints = parseHundredths(form.annualReturnRate, { allowNegative: true })
+  const hasDrawdownRate = form.drawdownAnnualReturnRate.trim() !== ''
+  const drawdownAnnualReturnRateBasisPoints = hasDrawdownRate
+    ? parseHundredths(form.drawdownAnnualReturnRate, { allowNegative: true })
+    : null
+  const annualContributionCents = parseHundredths(form.annualContribution)
+
+  if (amountCents === null) errors.amount = dollarAmountError
+  if (annualReturnRateBasisPoints === null) errors.annualReturnRate = signedPercentError
+  if (hasDrawdownRate && drawdownAnnualReturnRateBasisPoints === null) errors.drawdownAnnualReturnRate = signedPercentError
+  if (annualContributionCents === null) errors.annualContribution = dollarAmountError
+
+  if (amountCents === null || annualReturnRateBasisPoints === null || annualContributionCents === null || Object.keys(errors).length > 0) {
+    return { payload: null, errors }
+  }
+
   const payload: FinancialItemPayload = {
     name: form.name.trim(),
-    amountCents: dollarsToCents(form.amount),
+    amountCents,
     currency: form.currency.trim().toUpperCase(),
-    annualReturnRateBasisPoints: percentToBasisPoints(form.annualReturnRate),
-    annualContributionCents: dollarsToCents(form.annualContribution),
+    annualReturnRateBasisPoints,
+    annualContributionCents,
     inflateAnnualContribution: form.inflateAnnualContribution,
     sortOrder,
   }
-
-  if (form.drawdownAnnualReturnRate.trim() !== '') {
-    payload.drawdownAnnualReturnRateBasisPoints = percentToBasisPoints(form.drawdownAnnualReturnRate)
+  if (drawdownAnnualReturnRateBasisPoints !== null) {
+    payload.drawdownAnnualReturnRateBasisPoints = drawdownAnnualReturnRateBasisPoints
   }
 
-  return payload
+  return { payload, errors }
+}
+
+type ProjectionInputs = {
+  savingYears: number
+  drawdownYears: number
+  annualWithdrawalCents: number
+  annualWithdrawalInflationRateBasisPoints: number
+}
+
+function validateProjectionForm(
+  values: Record<ProjectionField, string>,
+): { request: ProjectionInputs | null; errors: FieldErrors<ProjectionField> } {
+  const errors: FieldErrors<ProjectionField> = {}
+  const savingYears = parseWholeNumber(values.savingYears, 0, maximumProjectionYears)
+  const drawdownYears =
+    values.drawdownYears.trim() === '' ? 0 : parseWholeNumber(values.drawdownYears, 0, maximumProjectionYears)
+  const annualWithdrawalCents = parseHundredths(values.annualWithdrawal)
+  const annualWithdrawalInflationRateBasisPoints = parseHundredths(values.withdrawalInflationRate)
+
+  if (savingYears === null) errors.savingYears = yearsError
+  if (drawdownYears === null) errors.drawdownYears = yearsError
+  if (annualWithdrawalCents === null) errors.annualWithdrawal = dollarAmountError
+  if (annualWithdrawalInflationRateBasisPoints === null) errors.withdrawalInflationRate = percentError
+
+  if (savingYears === null || drawdownYears === null || annualWithdrawalCents === null || annualWithdrawalInflationRateBasisPoints === null) {
+    return { request: null, errors }
+  }
+
+  return {
+    request: { savingYears, drawdownYears, annualWithdrawalCents, annualWithdrawalInflationRateBasisPoints },
+    errors,
+  }
+}
+
+function withoutField<Field extends string>(errors: FieldErrors<Field>, field: Field): FieldErrors<Field> {
+  if (!(field in errors)) {
+    return errors
+  }
+  const next = { ...errors }
+  delete next[field]
+  return next
+}
+
+function FieldError({ id, message }: { id: string; message?: string }) {
+  return message ? (
+    <span className="field-error" id={id}>
+      {message}
+    </span>
+  ) : null
 }
 
 function itemToPayload(item: FinancialItem): FinancialItemPayload {
@@ -767,16 +914,8 @@ function nextSortOrder(items: FinancialItem[]) {
   return Math.max(...items.map((item) => item.sortOrder)) + 1
 }
 
-function dollarsToCents(value: string) {
-  return Math.round(Number.parseFloat(value || '0') * 100)
-}
-
 function centsToDollarsInput(value: number) {
   return (value / 100).toFixed(2)
-}
-
-function percentToBasisPoints(value: string) {
-  return Math.round(Number.parseFloat(value || '0') * 100)
 }
 
 function basisPointsToPercentInput(value: number) {

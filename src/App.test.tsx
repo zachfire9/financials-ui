@@ -369,6 +369,95 @@ describe('Financial items app', () => {
     })
   })
 
+  it('accepts formatted dollar and percent input when creating an item', async () => {
+    const createdItem = { ...exampleItem, id: 'item_000003', name: 'Example formatted input', sortOrder: 0 }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse(createdItem, 201))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.change(await screen.findByLabelText(/name/i), { target: { value: 'Example formatted input' } })
+    fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '$1,000' } })
+    fireEvent.change(screen.getByLabelText(/^annual return \(%\)$/i), { target: { value: '7%' } })
+    fireEvent.change(screen.getByLabelText(/drawdown return \(%\)/i), { target: { value: '-2.5' } })
+    fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '1.005' } })
+    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+
+    await screen.findByText('Example formatted input')
+    expect(requestBodyAt(fetchMock, 1)).toMatchObject({
+      amountCents: 100000,
+      annualReturnRateBasisPoints: 700,
+      drawdownAnnualReturnRateBasisPoints: -250,
+      annualContributionCents: 101,
+    })
+  })
+
+  it('shows a field error instead of sending an invalid amount', async () => {
+    const createdItem = { ...exampleItem, id: 'item_000003', name: 'Example fixed input', sortOrder: 0 }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse(createdItem, 201))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.change(await screen.findByLabelText(/name/i), { target: { value: 'Example fixed input' } })
+    fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: 'abc' } })
+    fireEvent.change(screen.getByLabelText(/^annual return \(%\)$/i), { target: { value: 'seven' } })
+    fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+
+    expect(await screen.findByText('Enter a dollar amount like 1,000 or 1000.50.')).toBeInTheDocument()
+    expect(screen.getByText('Enter a percentage like 7 or -2.5.')).toBeInTheDocument()
+    expect(screen.getByLabelText(/current amount/i)).toHaveAttribute('aria-invalid', 'true')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '2,500' } })
+    expect(screen.queryByText('Enter a dollar amount like 1,000 or 1000.50.')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/current amount/i)).not.toHaveAttribute('aria-invalid')
+    expect(screen.getByText('Enter a percentage like 7 or -2.5.')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/^annual return \(%\)$/i), { target: { value: '7' } })
+    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+
+    await screen.findByText('Example fixed input')
+    expect(requestBodyAt(fetchMock, 1)).toMatchObject({ amountCents: 250000, annualReturnRateBasisPoints: 700 })
+  })
+
+  it('rejects fractional projection years without calling the API', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([exampleItem]))
+      .mockResolvedValueOnce(jsonResponse(exampleProjection))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.change(await screen.findByLabelText(/saving years/i), { target: { value: '10.5' } })
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+
+    expect(await screen.findByText('Enter a whole number of years from 0 to 75.')).toBeInTheDocument()
+    expect(screen.getByLabelText(/saving years/i)).toHaveAttribute('aria-invalid', 'true')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    fireEvent.change(screen.getByLabelText(/saving years/i), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '0' } })
+    fireEvent.change(screen.getByLabelText(/annual withdrawal/i), { target: { value: '$60,000' } })
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(requestBodyAt(fetchMock, 1)).toEqual({
+      savingYears: 2,
+      drawdownYears: 0,
+      annualWithdrawalCents: 6000000,
+      annualWithdrawalInflationRateBasisPoints: 300,
+    })
+  })
+
   it('updates and deletes existing financial items', async () => {
     const updatedItem = { ...exampleItem, name: 'Example down payment', amountCents: 1500000 }
     const fetchMock = vi
