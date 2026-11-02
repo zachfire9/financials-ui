@@ -32,10 +32,12 @@ export function ProjectionResults({ projection, colorFor }: ProjectionResultsPro
             <dt>Today</dt>
             <dd>{formatCompactCurrency(startYear.balanceCents, currency)}</dd>
           </div>
-          <div>
-            <dt>Peak, year {peakYear.year}</dt>
-            <dd>{formatCompactCurrency(peakYear.balanceCents, currency)}</dd>
-          </div>
+          {peakYear.year > 0 ? (
+            <div>
+              <dt>Peak, year {peakYear.year}</dt>
+              <dd>{formatCompactCurrency(peakYear.balanceCents, currency)}</dd>
+            </div>
+          ) : null}
           <div>
             <dt>At year {finalYear.year}</dt>
             <dd>{formatCompactCurrency(finalYear.balanceCents, currency)}</dd>

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "exportedAt": "2026-11-02T00:00:00Z",
+  "items": [
+    {
+      "id": "session-item-2",
+      "name": "Roth IRA",
+      "amountCents": 3000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 700,
+      "annualContributionCents": 700000,
+      "inflateAnnualContribution": false,
+      "sortOrder": 0,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "name": "Brokerage (no ID)",
+      "amountCents": 2000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 650,
+      "annualContributionCents": 300000,
+      "sortOrder": 1
+    },
+    {
+      "id": "session-item-2",
+      "name": "Savings (duplicate ID)",
+      "amountCents": 1000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 400,
+      "annualContributionCents": 0,
+      "inflateAnnualContribution": false,
+      "sortOrder": 2,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

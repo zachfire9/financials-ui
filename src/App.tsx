@@ -13,7 +13,7 @@ import {
   updateFinancialItem,
 } from './financialItemsApi'
 import { accountColors, otherAccountColor } from './charts/chartUtils'
-import { formatCurrency, formatRate, formatWholeCurrency } from './format'
+import { formatCurrency, formatRate, formatWholeCurrency, pluralize } from './format'
 import { parseHundredths, parseWholeNumber } from './numberInput'
 import { ProjectionResults } from './ProjectionResults'
 import { currencyCodePattern, importedItemProblems } from './itemValidation'
@@ -803,7 +803,7 @@ function backupItemsFromJSON(backup: FinancialItemsBackup) {
   const problems = backup.items.flatMap((item, index) => importedItemProblems(item, index))
   if (problems.length > 0) {
     const shown = problems.slice(0, 3).join(' ')
-    throw new Error(problems.length > 3 ? `${shown} (and ${problems.length - 3} more problems)` : shown)
+    throw new Error(problems.length > 3 ? `${shown} (and ${pluralize(problems.length - 3, 'more problem', 'more problems')})` : shown)
   }
 
   // Keep each ID the first time it appears. Missing or repeated IDs get new

@@ -104,6 +104,8 @@ describe('ProjectionResults', () => {
     cleanup()
     render(<ProjectionResults projection={shortProjection} colorFor={colorFor} />)
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Your money covers 1 of 3 years of withdrawals.')
+    // The balance only falls, so "Peak" would just repeat "Today".
+    expect(screen.queryByText(/^Peak/)).not.toBeInTheDocument()
   })
 
   it('describes saving-only projections by their final balance', () => {

@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "exportedAt": "2026-11-02T00:00:00Z",
+  "items": [
+    {
+      "id": "session-item-1",
+      "name": "401(k)",
+      "amountCents": 15000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 700,
+      "annualContributionCents": 1500000,
+      "inflateAnnualContribution": true,
+      "sortOrder": 0,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "drawdownAnnualReturnRateBasisPoints": 500
+    },
+    {
+      "id": "session-item-2",
+      "name": "Roth IRA",
+      "amountCents": 5000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 700,
+      "annualContributionCents": 700000,
+      "inflateAnnualContribution": false,
+      "sortOrder": 1,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "drawdownAnnualReturnRateBasisPoints": 500
+    },
+    {
+      "id": "session-item-3",
+      "name": "Brokerage",
+      "amountCents": 4000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 650,
+      "annualContributionCents": 400000,
+      "inflateAnnualContribution": false,
+      "sortOrder": 2,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "session-item-4",
+      "name": "HSA",
+      "amountCents": 1800000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 600,
+      "annualContributionCents": 400000,
+      "inflateAnnualContribution": false,
+      "sortOrder": 3,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "session-item-5",
+      "name": "Old 403(b)",
+      "amountCents": 3500000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 650,
+      "annualContributionCents": 0,
+      "inflateAnnualContribution": false,
+      "sortOrder": 4,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "session-item-6",
+      "name": "529 plan",
+      "amountCents": 2200000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 500,
+      "annualContributionCents": 300000,
+      "inflateAnnualContribution": false,
+      "sortOrder": 5,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "session-item-7",
+      "name": "Crypto",
+      "amountCents": 800000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 1000,
+      "annualContributionCents": 0,
+      "inflateAnnualContribution": false,
+      "sortOrder": 6,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "drawdownAnnualReturnRateBasisPoints": -500
+    },
+    {
+      "id": "session-item-8",
+      "name": "I bonds",
+      "amountCents": 1000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 400,
+      "annualContributionCents": 0,
+      "inflateAnnualContribution": false,
+      "sortOrder": 7,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "session-item-9",
+      "name": "High-yield savings",
+      "amountCents": 2000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 400,
+      "annualContributionCents": 0,
+      "inflateAnnualContribution": false,
+      "sortOrder": 8,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "drawdownAnnualReturnRateBasisPoints": 300
+    }
+  ]
+}
