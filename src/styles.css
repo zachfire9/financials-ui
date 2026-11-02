@@ -245,11 +245,19 @@ h3 {
 }
 
 .projection-controls {
+  align-items: flex-start;
   flex-wrap: wrap;
   margin-bottom: 1rem;
 }
 
-.projection-controls label {
+/* Fields are top-aligned so a field error below one input doesn't shift the
+   others; offset the button by the label height to line it up with the inputs. */
+.projection-controls > button {
+  margin-top: calc(1.5em + 0.4rem);
+}
+
+.projection-controls label,
+.projection-controls .form-field {
   max-width: 220px;
 }
 
@@ -359,4 +367,17 @@ th {
   .item-summary {
     align-items: flex-start;
   }
+}
+
+.field-error {
+  color: #b91c1c;
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 0.3rem;
+}
+
+input[aria-invalid='true'] {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 1px #dc2626;
 }
