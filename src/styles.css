@@ -743,6 +743,16 @@ input[aria-invalid='true'] {
   font-weight: 650;
 }
 
+/* A surface-colored halo keeps annotation text legible over gridlines,
+   areas and the shaded shortfall zone. */
+.phase-marker text,
+.shortfall-label {
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-linejoin: round;
+  stroke-width: 4px;
+}
+
 .crosshair line {
   stroke: var(--ink);
   stroke-opacity: 0.45;

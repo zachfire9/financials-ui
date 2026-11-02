@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ProjectionResults } from './ProjectionResults'
@@ -132,6 +132,55 @@ describe('ProjectionResults', () => {
     cleanup()
     const short = render(<ProjectionResults projection={shortProjection} colorFor={colorFor} />)
     expect(short.container.querySelector('.shortfall-label')).toHaveTextContent('Runs short from year 2')
+  })
+
+  it.each([
+    [360, 'beside the marker on the left'],
+    [280, 'with the shortfall label on a second line'],
+  ])('keeps the drawdown and shortfall labels apart at %ipx (%s)', (width) => {
+    // Recreates a phone-width chart: drawdown starts early (year 10 of 40) and
+    // the money runs short from year 36, so both labels want the right side.
+    const balances: YearlyBalance[] = []
+    for (let yearNumber = 0; yearNumber <= 40; yearNumber++) {
+      const phase = yearNumber === 0 ? 'starting' : yearNumber <= 10 ? 'saving' : 'drawdown'
+      const balance = yearNumber < 36 ? 1_000_000 - Math.abs(yearNumber - 10) * 30_000 : 0
+      balances.push(year(yearNumber, phase, balance, { unfundedWithdrawalCents: yearNumber >= 36 ? 50_000 : 0 }))
+    }
+    const narrow = projectionWith([{ id: 'a', name: 'Everything', balances }], 10, 30)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width } as DOMRect)
+
+    const { container } = render(<ProjectionResults projection={narrow} colorFor={colorFor} />)
+    const phaseLabel = container.querySelector('.phase-marker text') as SVGTextElement
+    const shortfallLabel = container.querySelector('.shortfall-label') as SVGTextElement
+    expect(phaseLabel).toHaveTextContent('Drawdown starts')
+    expect(shortfallLabel).toHaveTextContent('⚠ Short from year 36')
+
+    // Estimated label extents (12px text, ~7px per character).
+    const extent = (label: SVGTextElement) => {
+      const x = Number(label.getAttribute('x'))
+      const textWidth = (label.textContent ?? '').length * 7
+      return label.getAttribute('text-anchor') === 'end' ? [x - textWidth, x] : [x, x + textWidth]
+    }
+    const [phaseStart, phaseEnd] = extent(phaseLabel)
+    const [shortfallStart] = extent(shortfallLabel)
+    const sameRow = phaseLabel.getAttribute('y') === shortfallLabel.getAttribute('y')
+    expect(phaseStart).toBeGreaterThanOrEqual(0)
+    if (sameRow) {
+      expect(phaseEnd).toBeLessThan(shortfallStart)
+    }
+    if (width === 280) {
+      expect(sameRow).toBe(false)
+    }
+    vi.restoreAllMocks()
+  })
+
+  it('keeps both labels on the top row when there is room', () => {
+    const { container } = render(<ProjectionResults projection={shortProjection} colorFor={colorFor} />)
+    expect(container.querySelector('.shortfall-label')?.getAttribute('y')).toBe('20')
+
+    cleanup()
+    const wide = render(<ProjectionResults projection={fundedProjection} colorFor={colorFor} />)
+    expect(wide.container.querySelector('.phase-marker text')?.getAttribute('y')).toBe('20')
   })
 
   it('switches between the stacked total and per-account lines', () => {

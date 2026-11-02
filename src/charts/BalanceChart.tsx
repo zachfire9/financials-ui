@@ -93,20 +93,32 @@ export function BalanceChart({ projection, colorFor }: BalanceChartProps) {
     }
   }
 
-  // Annotation labels share the row above the plot. Measure (approximately,
-  // ~6.6px per character at 12px) so they never overlap or leave the chart.
+  // Annotation labels share the row above the plot. Widths are estimated
+  // generously (~7px per character at 12px) so labels never overlap. The
+  // drawdown label goes beside its marker on whichever side has room; if it
+  // can only fit on the side where the shortfall label sits, the shortfall
+  // label drops to a second line inside the shaded zone.
   const compact = width < 560
   const plotRight = margin.left + plotWidth
   const shortfallText = firstShortfall
     ? compact ? `⚠ Short from year ${firstShortfall.year}` : `⚠ Runs short from year ${firstShortfall.year}`
     : ''
-  const shortfallLabelWidth = shortfallText.length * 6.6
+  const charWidth = 7
+  const labelGap = 8
+  const shortfallLabelWidth = shortfallText.length * charWidth
   const phaseText = compact ? 'Drawdown starts' : `Withdrawals start after year ${savingYears}`
-  const phaseLabelWidth = phaseText.length * 6.6
+  const phaseLabelWidth = phaseText.length * charWidth
   const phaseX = x(savingYears)
-  const roomOnRight = plotRight - (firstShortfall ? shortfallLabelWidth + 16 : 0) - (phaseX + 8)
-  const phaseLabelOnRight = roomOnRight >= phaseLabelWidth || phaseX - 8 - phaseLabelWidth < margin.left - 40
+  const shortfallLabelStart = firstShortfall ? plotRight - shortfallLabelWidth : plotRight
+  const phaseFitsRight = phaseX + labelGap + phaseLabelWidth <= plotRight
+  const phaseFitsLeft = phaseX - labelGap - phaseLabelWidth >= labelGap
+  const phaseRightClearOfShortfall = phaseX + labelGap + phaseLabelWidth + 16 <= shortfallLabelStart
+  const phaseLabelOnRight = phaseFitsRight && (phaseRightClearOfShortfall || !phaseFitsLeft)
   const labelRowY = margin.top - 16
+  const shortfallOnSecondLine =
+    Boolean(firstShortfall) && savingYears > 0 && drawdownYears > 0 && phaseLabelOnRight && !phaseRightClearOfShortfall
+  const shortfallLabelY = shortfallOnSecondLine ? margin.top + 16 : labelRowY
+  const shortfallLabelX = shortfallOnSecondLine ? plotRight - 6 : plotRight
 
   const tooltipLeft = active ? x(active.year) : 0
   const tooltipOnLeft = tooltipLeft > width * 0.6
@@ -202,7 +214,7 @@ export function BalanceChart({ projection, colorFor }: BalanceChartProps) {
           ) : null}
 
           {firstShortfall ? (
-            <text className="shortfall-label" x={plotRight} y={labelRowY} textAnchor="end">
+            <text className="shortfall-label" x={shortfallLabelX} y={shortfallLabelY} textAnchor="end">
               {shortfallText}
             </text>
           ) : null}
