@@ -435,7 +435,7 @@ function App() {
                 checked={form.inflateAnnualContribution}
                 onChange={(event) => setForm({ ...form, inflateAnnualContribution: event.target.checked })}
               />
-              Grow this item’s contribution with inflation
+              Grow this item’s contribution with inflation (uses the projection’s Inflation rate)
             </label>
           </div>
 
@@ -579,14 +579,19 @@ function App() {
                   placeholder="60000.00"
                   required
                   aria-invalid={projectionFieldErrors.annualWithdrawal ? true : undefined}
-                  aria-describedby={projectionFieldErrors.annualWithdrawal ? 'annual-withdrawal-error' : undefined}
+                  aria-describedby={
+                    projectionFieldErrors.annualWithdrawal ? 'annual-withdrawal-help annual-withdrawal-error' : 'annual-withdrawal-help'
+                  }
                 />
               </label>
+              <span className="field-help" id="annual-withdrawal-help">
+                In today’s dollars; grows with inflation.
+              </span>
               <FieldError id="annual-withdrawal-error" message={projectionFieldErrors.annualWithdrawal} />
             </div>
             <div className="form-field">
               <label>
-                Withdrawal inflation (%)
+                Inflation (%)
                 <input
                   inputMode="decimal"
                   value={projectionWithdrawalInflationRate}
@@ -596,9 +601,14 @@ function App() {
                   placeholder="3.00"
                   required
                   aria-invalid={projectionFieldErrors.withdrawalInflationRate ? true : undefined}
-                  aria-describedby={projectionFieldErrors.withdrawalInflationRate ? 'withdrawal-inflation-error' : undefined}
+                  aria-describedby={
+                    projectionFieldErrors.withdrawalInflationRate ? 'inflation-help withdrawal-inflation-error' : 'inflation-help'
+                  }
                 />
               </label>
+              <span className="field-help" id="inflation-help">
+                Grows withdrawals each year, and contributions marked “grow with inflation”.
+              </span>
               <FieldError id="withdrawal-inflation-error" message={projectionFieldErrors.withdrawalInflationRate} />
             </div>
             <button type="submit" disabled={isCalculatingProjection || items.length === 0}>

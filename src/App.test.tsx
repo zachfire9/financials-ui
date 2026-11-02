@@ -620,7 +620,11 @@ describe('Financial items app', () => {
     fireEvent.change(await screen.findByLabelText(/saving years/i), { target: { value: '1' } })
     fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '2' } })
     fireEvent.change(screen.getByLabelText(/annual withdrawal/i), { target: { value: '60000.00' } })
-    fireEvent.change(screen.getByLabelText(/withdrawal inflation \(%\)/i), { target: { value: '3.00' } })
+    fireEvent.change(screen.getByLabelText(/^inflation \(%\)$/i), { target: { value: '3.00' } })
+    expect(screen.getByLabelText(/^inflation \(%\)$/i)).toHaveAccessibleDescription(
+      'Grows withdrawals each year, and contributions marked “grow with inflation”.',
+    )
+    expect(screen.getByLabelText(/^annual withdrawal$/i)).toHaveAccessibleDescription('In today’s dollars; grows with inflation.')
     expect(screen.queryByLabelText(/grow contributions by withdrawal inflation/i)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
 
