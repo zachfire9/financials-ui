@@ -13,6 +13,8 @@ import {
   updateFinancialItem,
 } from './financialItemsApi'
 import { parseHundredths, parseWholeNumber } from './numberInput'
+import { currencyCodePattern, importedItemProblems } from './itemValidation'
+import { clearSavedSession, loadSavedSession, saveSession } from './savedSession'
 
 const emptyForm = {
   name: '',
@@ -26,44 +28,93 @@ const emptyForm = {
 
 type FormState = typeof emptyForm
 
-type ItemNumberField = 'amount' | 'annualReturnRate' | 'drawdownAnnualReturnRate' | 'annualContribution'
+type ItemField = 'amount' | 'currency' | 'annualReturnRate' | 'drawdownAnnualReturnRate' | 'annualContribution'
 type ProjectionField = 'savingYears' | 'drawdownYears' | 'annualWithdrawal' | 'withdrawalInflationRate'
 type FieldErrors<Field extends string> = Partial<Record<Field, string>>
+
+const defaultProjectionForm = {
+  savingYears: '10',
+  drawdownYears: '0',
+  annualWithdrawal: '0.00',
+  withdrawalInflationRate: '3.00',
+}
 
 const maximumProjectionYears = 75
 const dollarAmountError = 'Enter a dollar amount like 1,000 or 1000.50.'
 const signedPercentError = 'Enter a percentage like 7 or -2.5.'
 const percentError = 'Enter a percentage of 0 or more, like 3.'
 const yearsError = `Enter a whole number of years from 0 to ${maximumProjectionYears}.`
+const currencyError = 'Use a 3-letter currency code like USD.'
 
 function App() {
   const isEphemeralSession = isEphemeralSessionMode()
-  const [items, setItems] = useState<FinancialItem[]>([])
+  // Ephemeral sessions are restored from this browser's storage, if saved.
+  const [restoredSession] = useState(() => (isEphemeralSession ? loadSavedSession() : null))
+  const [items, setItems] = useState<FinancialItem[]>(() => [...(restoredSession?.items ?? [])].sort(compareFinancialItems))
   const [form, setForm] = useState<FormState>(emptyForm)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [projectionSavingYears, setProjectionSavingYears] = useState('10')
-  const [projectionDrawdownYears, setProjectionDrawdownYears] = useState('0')
-  const [projectionAnnualWithdrawal, setProjectionAnnualWithdrawal] = useState('0.00')
-  const [projectionWithdrawalInflationRate, setProjectionWithdrawalInflationRate] = useState('3.00')
+  const [projectionSavingYears, setProjectionSavingYears] = useState(
+    restoredSession?.projectionForm.savingYears ?? defaultProjectionForm.savingYears,
+  )
+  const [projectionDrawdownYears, setProjectionDrawdownYears] = useState(
+    restoredSession?.projectionForm.drawdownYears ?? defaultProjectionForm.drawdownYears,
+  )
+  const [projectionAnnualWithdrawal, setProjectionAnnualWithdrawal] = useState(
+    restoredSession?.projectionForm.annualWithdrawal ?? defaultProjectionForm.annualWithdrawal,
+  )
+  const [projectionWithdrawalInflationRate, setProjectionWithdrawalInflationRate] = useState(
+    restoredSession?.projectionForm.withdrawalInflationRate ?? defaultProjectionForm.withdrawalInflationRate,
+  )
   const [projection, setProjection] = useState<Projection | null>(null)
   const [isCalculatingProjection, setIsCalculatingProjection] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [staleMessage, setStaleMessage] = useState<string | null>(null)
-  const [backupMessage, setBackupMessage] = useState<string | null>(null)
+  const [backupMessage, setBackupMessage] = useState<string | null>(() =>
+    restoredSession && restoredSession.items.length > 0
+      ? `Restored ${restoredSession.items.length} ${restoredSession.items.length === 1 ? 'item' : 'items'} saved in this browser.`
+      : null,
+  )
+  // Signature of the items the current projection was calculated from, so the
+  // results can be flagged as out of date when items change afterwards.
+  const [projectionItemsSignature, setProjectionItemsSignature] = useState<string | null>(null)
   const [projectionMessage, setProjectionMessage] = useState<string | null>(null)
-  const [itemFieldErrors, setItemFieldErrors] = useState<FieldErrors<ItemNumberField>>({})
+  const [itemFieldErrors, setItemFieldErrors] = useState<FieldErrors<ItemField>>({})
   const [projectionFieldErrors, setProjectionFieldErrors] = useState<FieldErrors<ProjectionField>>({})
   // Highest session-item number handed out in this browser session, so IDs of
   // deleted items are never reused.
-  const lastSessionItemNumber = useRef(0)
+  const lastSessionItemNumber = useRef(restoredSession?.lastSessionItemNumber ?? 0)
 
   const editingItem = useMemo(
     () => items.find((item) => item.id === editingItemId) ?? null,
     [editingItemId, items],
   )
+
+  useEffect(() => {
+    if (!isEphemeralSession) {
+      return
+    }
+    saveSession({
+      version: 1,
+      items,
+      projectionForm: {
+        savingYears: projectionSavingYears,
+        drawdownYears: projectionDrawdownYears,
+        annualWithdrawal: projectionAnnualWithdrawal,
+        withdrawalInflationRate: projectionWithdrawalInflationRate,
+      },
+      lastSessionItemNumber: Math.max(lastSessionItemNumber.current, highestSessionItemNumber(items)),
+    })
+  }, [
+    isEphemeralSession,
+    items,
+    projectionSavingYears,
+    projectionDrawdownYears,
+    projectionAnnualWithdrawal,
+    projectionWithdrawalInflationRate,
+  ])
 
   useEffect(() => {
     if (isEphemeralSession) {
@@ -131,7 +182,7 @@ function App() {
         setItems(importedItems.sort(compareFinancialItems))
         setProjection(null)
         resetForm()
-        setBackupMessage('Backup imported into this browser session. Refreshing or closing the browser loses unsaved changes unless you export JSON again.')
+        setBackupMessage('Backup imported into this browser session.')
         return
       }
 
@@ -196,7 +247,7 @@ function App() {
     return sessionItemID(next)
   }
 
-  function updateItemNumberField(field: ItemNumberField, value: string) {
+  function updateItemField(field: ItemField, value: string) {
     setForm((currentForm) => ({ ...currentForm, [field]: value }))
     setItemFieldErrors((currentErrors) => withoutField(currentErrors, field))
   }
@@ -204,6 +255,28 @@ function App() {
   function updateProjectionField(field: ProjectionField, value: string, setValue: (value: string) => void) {
     setValue(value)
     setProjectionFieldErrors((currentErrors) => withoutField(currentErrors, field))
+  }
+
+  function handleClearSession() {
+    const confirmed = window.confirm(
+      'Clear all items saved in this browser? This can’t be undone. Export a JSON backup first if you want to keep them.',
+    )
+    if (!confirmed) {
+      return
+    }
+    clearSavedSession()
+    lastSessionItemNumber.current = 0
+    setItems([])
+    setProjection(null)
+    setProjectionItemsSignature(null)
+    setProjectionSavingYears(defaultProjectionForm.savingYears)
+    setProjectionDrawdownYears(defaultProjectionForm.drawdownYears)
+    setProjectionAnnualWithdrawal(defaultProjectionForm.annualWithdrawal)
+    setProjectionWithdrawalInflationRate(defaultProjectionForm.withdrawalInflationRate)
+    setProjectionFieldErrors({})
+    setErrorMessage(null)
+    resetForm()
+    setBackupMessage('Session cleared. Nothing is saved in this browser.')
   }
 
   async function handleDelete(item: FinancialItem) {
@@ -316,8 +389,10 @@ function App() {
         ...projectionInputs,
         ...(isEphemeralSession ? { items: items.map(itemToPayload) } : {}),
       }
+      const itemsSignature = signatureForProjection(items)
       const nextProjection = await calculateProjection(projectionRequest)
       setProjection(nextProjection)
+      setProjectionItemsSignature(itemsSignature)
     } catch (error) {
       const message = getErrorMessage(error)
       if (projection) {
@@ -356,7 +431,7 @@ function App() {
                 <input
                   inputMode="decimal"
                   value={form.amount}
-                  onChange={(event) => updateItemNumberField('amount', event.target.value)}
+                  onChange={(event) => updateItemField('amount', event.target.value)}
                   placeholder="10000.00"
                   required
                   aria-invalid={itemFieldErrors.amount ? true : undefined}
@@ -365,15 +440,20 @@ function App() {
               </label>
               <FieldError id="amount-error" message={itemFieldErrors.amount} />
             </div>
-            <label>
-              Currency
-              <input
-                value={form.currency}
-                onChange={(event) => setForm({ ...form, currency: event.target.value.toUpperCase() })}
-                maxLength={3}
-                required
-              />
-            </label>
+            <div className="form-field">
+              <label>
+                Currency
+                <input
+                  value={form.currency}
+                  onChange={(event) => updateItemField('currency', event.target.value.toUpperCase())}
+                  maxLength={3}
+                  required
+                  aria-invalid={itemFieldErrors.currency ? true : undefined}
+                  aria-describedby={itemFieldErrors.currency ? 'currency-error' : undefined}
+                />
+              </label>
+              <FieldError id="currency-error" message={itemFieldErrors.currency} />
+            </div>
           </div>
 
           <div className="form-row">
@@ -383,7 +463,7 @@ function App() {
                 <input
                   inputMode="decimal"
                   value={form.annualReturnRate}
-                  onChange={(event) => updateItemNumberField('annualReturnRate', event.target.value)}
+                  onChange={(event) => updateItemField('annualReturnRate', event.target.value)}
                   placeholder="7.00"
                   required
                   aria-invalid={itemFieldErrors.annualReturnRate ? true : undefined}
@@ -398,7 +478,7 @@ function App() {
                 <input
                   inputMode="decimal"
                   value={form.drawdownAnnualReturnRate}
-                  onChange={(event) => updateItemNumberField('drawdownAnnualReturnRate', event.target.value)}
+                  onChange={(event) => updateItemField('drawdownAnnualReturnRate', event.target.value)}
                   placeholder="Uses annual return when blank"
                   aria-invalid={itemFieldErrors.drawdownAnnualReturnRate ? true : undefined}
                   aria-describedby={itemFieldErrors.drawdownAnnualReturnRate ? 'drawdown-return-error' : undefined}
@@ -413,7 +493,7 @@ function App() {
                 <input
                   inputMode="decimal"
                   value={form.annualContribution}
-                  onChange={(event) => updateItemNumberField('annualContribution', event.target.value)}
+                  onChange={(event) => updateItemField('annualContribution', event.target.value)}
                   placeholder="3000.00"
                   required
                   aria-invalid={itemFieldErrors.annualContribution ? true : undefined}
@@ -428,7 +508,7 @@ function App() {
                 checked={form.inflateAnnualContribution}
                 onChange={(event) => setForm({ ...form, inflateAnnualContribution: event.target.checked })}
               />
-              Grow this item’s contribution with inflation
+              Grow this item’s contribution with inflation (uses the projection’s Inflation rate)
             </label>
           </div>
 
@@ -452,7 +532,9 @@ function App() {
               <p className="eyebrow">{isEphemeralSession ? 'Ephemeral session mode' : 'API-backed list'}</p>
               <h2 id="items-heading">Financial items</h2>
               {isEphemeralSession ? (
-                <p className="panel-help">Refreshing or closing the browser loses unsaved changes unless you export JSON again.</p>
+                <p className="panel-help">
+                  Saved in this browser only. Use Export JSON to back up or move to another device.
+                </p>
               ) : null}
               {items.length > 1 ? <p className="panel-help">Drag items to reorder them.</p> : null}
             </div>
@@ -467,6 +549,11 @@ function App() {
               {!isEphemeralSession ? (
                 <button type="button" className="secondary" onClick={() => void loadItems()}>
                   Refresh
+                </button>
+              ) : null}
+              {isEphemeralSession ? (
+                <button type="button" className="secondary" onClick={handleClearSession}>
+                  Clear session
                 </button>
               ) : null}
             </div>
@@ -572,14 +659,19 @@ function App() {
                   placeholder="60000.00"
                   required
                   aria-invalid={projectionFieldErrors.annualWithdrawal ? true : undefined}
-                  aria-describedby={projectionFieldErrors.annualWithdrawal ? 'annual-withdrawal-error' : undefined}
+                  aria-describedby={
+                    projectionFieldErrors.annualWithdrawal ? 'annual-withdrawal-help annual-withdrawal-error' : 'annual-withdrawal-help'
+                  }
                 />
               </label>
+              <span className="field-help" id="annual-withdrawal-help">
+                In today’s dollars; grows with inflation.
+              </span>
               <FieldError id="annual-withdrawal-error" message={projectionFieldErrors.annualWithdrawal} />
             </div>
             <div className="form-field">
               <label>
-                Withdrawal inflation (%)
+                Inflation (%)
                 <input
                   inputMode="decimal"
                   value={projectionWithdrawalInflationRate}
@@ -589,9 +681,14 @@ function App() {
                   placeholder="3.00"
                   required
                   aria-invalid={projectionFieldErrors.withdrawalInflationRate ? true : undefined}
-                  aria-describedby={projectionFieldErrors.withdrawalInflationRate ? 'withdrawal-inflation-error' : undefined}
+                  aria-describedby={
+                    projectionFieldErrors.withdrawalInflationRate ? 'inflation-help withdrawal-inflation-error' : 'inflation-help'
+                  }
                 />
               </label>
+              <span className="field-help" id="inflation-help">
+                Grows withdrawals each year, and contributions marked “grow with inflation”.
+              </span>
               <FieldError id="withdrawal-inflation-error" message={projectionFieldErrors.withdrawalInflationRate} />
             </div>
             <button type="submit" disabled={isCalculatingProjection || items.length === 0}>
@@ -604,6 +701,9 @@ function App() {
           ) : null}
           {projectionMessage ? <p className="status-message warning">{projectionMessage}</p> : null}
 
+          {projection && projectionItemsSignature !== null && signatureForProjection(items) !== projectionItemsSignature ? (
+            <p className="status-message warning">Your items changed since this projection. Recalculate to update.</p>
+          ) : null}
           {projection ? <ProjectionResults projection={projection} /> : null}
         </section>
       </section>
@@ -728,6 +828,11 @@ function backupItemsFromJSON(backup: FinancialItemsBackup) {
   if (!backup || !Array.isArray(backup.items)) {
     throw new Error('Backup JSON must include an items array.')
   }
+  const problems = backup.items.flatMap((item, index) => importedItemProblems(item, index))
+  if (problems.length > 0) {
+    const shown = problems.slice(0, 3).join(' ')
+    throw new Error(problems.length > 3 ? `${shown} (and ${problems.length - 3} more problems)` : shown)
+  }
 
   // Keep each ID the first time it appears. Missing or repeated IDs get new
   // numbers above the highest session-item number in the file.
@@ -746,6 +851,7 @@ function backupItemsFromJSON(backup: FinancialItemsBackup) {
       seenIDs.add(freshID)
       return freshID
     })(),
+    drawdownAnnualReturnRateBasisPoints: item.drawdownAnnualReturnRateBasisPoints ?? undefined,
     inflateAnnualContribution: item.inflateAnnualContribution ?? false,
     sortOrder: item.sortOrder ?? index,
     createdAt: item.createdAt || new Date().toISOString(),
@@ -798,8 +904,8 @@ function isEphemeralSessionMode() {
 function validateItemForm(
   form: FormState,
   sortOrder: number,
-): { payload: FinancialItemPayload | null; errors: FieldErrors<ItemNumberField> } {
-  const errors: FieldErrors<ItemNumberField> = {}
+): { payload: FinancialItemPayload | null; errors: FieldErrors<ItemField> } {
+  const errors: FieldErrors<ItemField> = {}
   const amountCents = parseHundredths(form.amount)
   const annualReturnRateBasisPoints = parseHundredths(form.annualReturnRate, { allowNegative: true })
   const hasDrawdownRate = form.drawdownAnnualReturnRate.trim() !== ''
@@ -807,8 +913,10 @@ function validateItemForm(
     ? parseHundredths(form.drawdownAnnualReturnRate, { allowNegative: true })
     : null
   const annualContributionCents = parseHundredths(form.annualContribution)
+  const currency = form.currency.trim().toUpperCase()
 
   if (amountCents === null) errors.amount = dollarAmountError
+  if (!currencyCodePattern.test(currency)) errors.currency = currencyError
   if (annualReturnRateBasisPoints === null) errors.annualReturnRate = signedPercentError
   if (hasDrawdownRate && drawdownAnnualReturnRateBasisPoints === null) errors.drawdownAnnualReturnRate = signedPercentError
   if (annualContributionCents === null) errors.annualContribution = dollarAmountError
@@ -820,7 +928,7 @@ function validateItemForm(
   const payload: FinancialItemPayload = {
     name: form.name.trim(),
     amountCents,
-    currency: form.currency.trim().toUpperCase(),
+    currency,
     annualReturnRateBasisPoints,
     annualContributionCents,
     inflateAnnualContribution: form.inflateAnnualContribution,
@@ -882,6 +990,19 @@ function FieldError({ id, message }: { id: string; message?: string }) {
   ) : null
 }
 
+// Identifies the inputs a projection depends on. Order and timestamps are
+// ignored, so reordering items doesn't mark a projection as out of date.
+function signatureForProjection(items: FinancialItem[]) {
+  return JSON.stringify(
+    items
+      .map((item) => {
+        const { sortOrder: _sortOrder, ...inputs } = itemToPayload(item)
+        return { id: item.id, ...inputs }
+      })
+      .sort((left, right) => left.id.localeCompare(right.id)),
+  )
+}
+
 function itemToPayload(item: FinancialItem): FinancialItemPayload {
   const payload: FinancialItemPayload = {
     name: item.name,
@@ -923,10 +1044,17 @@ function basisPointsToPercentInput(value: number) {
 }
 
 function formatCurrency(cents: number, currency: string) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-  }).format(cents / 100)
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+    }).format(cents / 100)
+  } catch {
+    // Intl throws on malformed currency codes; show plain text instead of
+    // crashing the page.
+    const amount = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100)
+    return `${amount} ${currency}`.trim()
+  }
 }
 
 function formatRate(basisPoints: number) {
