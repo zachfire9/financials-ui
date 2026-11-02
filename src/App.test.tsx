@@ -194,6 +194,86 @@ describe('Financial items app', () => {
     })
   })
 
+  it('keeps ephemeral item IDs unique after deleting and adding items', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+    const exportItems = stubBackupDownload()
+
+    render(<App />)
+
+    addSessionItem('Account A')
+    addSessionItem('Account B')
+    addSessionItem('Account C')
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete Account A' }))
+    addSessionItem('Account D')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Account D' }))
+    expect(screen.getByLabelText(/name/i)).toHaveValue('Account D')
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Account D renamed' } })
+    fireEvent.click(screen.getByRole('button', { name: /save item/i }))
+
+    await screen.findByText('Account D renamed')
+    expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
+      'Account B',
+      'Account C',
+      'Account D renamed',
+    ])
+
+    const exported = await exportItems()
+    expect(exported.map((item) => item.id)).toEqual(['session-item-2', 'session-item-3', 'session-item-4'])
+  })
+
+  it('does not reuse the newest ephemeral item ID after it is deleted', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+    const exportItems = stubBackupDownload()
+
+    render(<App />)
+
+    addSessionItem('Account A')
+    addSessionItem('Account B')
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete Account B' }))
+    addSessionItem('Account C')
+
+    await screen.findByText('Account C')
+    const exported = await exportItems()
+    expect(exported.map((item) => item.id)).toEqual(['session-item-1', 'session-item-3'])
+  })
+
+  it('assigns fresh IDs to imported ephemeral items with missing or duplicate IDs', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+    const exportItems = stubBackupDownload()
+
+    render(<App />)
+
+    const backup = {
+      schemaVersion: 1,
+      exportedAt: '2026-01-03T00:00:00Z',
+      items: [
+        { ...exampleItem, id: 'session-item-2', name: 'Imported first', sortOrder: 0 },
+        { ...exampleItem, id: '', name: 'Imported missing ID', sortOrder: 1 },
+        { ...exampleItem, id: 'session-item-2', name: 'Imported duplicate ID', sortOrder: 2 },
+        { ...exampleItem, id: 'item_000009', name: 'Imported API item', sortOrder: 3 },
+      ],
+    }
+    const file = new File([JSON.stringify(backup)], 'financials-backup.json', { type: 'application/json' })
+    fireEvent.change(screen.getByLabelText(/import json backup/i), { target: { files: [file] } })
+    expect(await screen.findByText(/backup imported into this browser session/i)).toBeInTheDocument()
+
+    addSessionItem('Added after import')
+    await screen.findByText('Added after import')
+
+    const exported = await exportItems()
+    expect(exported.map((item) => [item.name, item.id])).toEqual([
+      ['Imported first', 'session-item-2'],
+      ['Imported missing ID', 'session-item-3'],
+      ['Imported duplicate ID', 'session-item-4'],
+      ['Imported API item', 'item_000009'],
+      ['Added after import', 'session-item-5'],
+    ])
+  })
+
   it('exports ephemeral browser-owned data without calling the backup API', async () => {
     vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
     const createObjectURL = vi.fn().mockReturnValue('blob:financial-backup')
@@ -582,6 +662,40 @@ function jsonResponse(body: unknown, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   })
+}
+
+function addSessionItem(name: string) {
+  fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: name } })
+  fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '1000.00' } })
+  fireEvent.change(screen.getByLabelText(/^annual return/i), { target: { value: '5.00' } })
+  fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '0.00' } })
+  fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+}
+
+function stubBackupDownload() {
+  const blobs: Blob[] = []
+  vi.stubGlobal('URL', {
+    ...URL,
+    createObjectURL: vi.fn((blob: Blob) => {
+      blobs.push(blob)
+      return 'blob:financial-backup'
+    }),
+    revokeObjectURL: vi.fn(),
+  })
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+  return async () => {
+    fireEvent.click(screen.getByRole('button', { name: /export json backup/i }))
+    await waitFor(() => expect(blobs.length).toBeGreaterThan(0))
+    const text = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsText(blobs[blobs.length - 1])
+    })
+    const backup = JSON.parse(text) as { items: Array<{ id: string; name: string }> }
+    return backup.items
+  }
 }
 
 function requestBodyAt(fetchMock: ReturnType<typeof vi.fn>, callIndex: number) {
