@@ -682,6 +682,48 @@ describe('Financial items app', () => {
     expect(screen.getAllByText('3,389.56 U$').length).toBeGreaterThan(0)
   })
 
+  it('asks for a withdrawal amount instead of sending drawdown years with no withdrawal', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse([exampleItem]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.change(await screen.findByLabelText(/drawdown years/i), { target: { value: '50' } })
+    fireEvent.change(screen.getByLabelText(/^annual withdrawal$/i), { target: { value: '0.00' } })
+    fireEvent.click(await screen.findByRole('button', { name: /calculate projection/i }))
+
+    expect(await screen.findByText('Enter how much to withdraw each year, or set drawdown years to 0.')).toBeInTheDocument()
+    expect(screen.getByLabelText(/^annual withdrawal$/i)).toHaveAttribute('aria-invalid', 'true')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    fireEvent.change(screen.getByLabelText(/saving years/i), { target: { value: '0' } })
+    fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+
+    expect(await screen.findByText('Add at least one saving or drawdown year.')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('explains projection errors from the API in plain language', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([exampleItem]))
+      .mockResolvedValueOnce(
+        jsonResponse({ error: 'invalid projection request: all items must use the same currency; annualWithdrawalCents is required when drawdownYears is greater than 0' }, 400),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /calculate projection/i }))
+
+    expect(
+      await screen.findByText('Couldn’t calculate the projection. All accounts need the same currency to be projected together.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Enter how much to withdraw each year, or set drawdown years to 0.')).toBeInTheDocument()
+    expect(screen.queryByText(/invalid projection request/i)).not.toBeInTheDocument()
+  })
+
   it('updates and deletes existing financial items', async () => {
     const updatedItem = { ...exampleItem, name: 'Example down payment', amountCents: 1500000 }
     const fetchMock = vi
@@ -969,7 +1011,11 @@ describe('Financial items app', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
 
-    expect(await screen.findByText(/projection is updating/i)).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        'Couldn’t update the projection. Projection service unavailable. Showing your last projection until then.',
+      ),
+    ).toBeInTheDocument()
     expect(screen.getAllByText('$3,389.56').length).toBeGreaterThan(0)
   })
 })

@@ -16,6 +16,13 @@ import { accountColors, otherAccountColor } from './charts/chartUtils'
 import { formatCurrency, formatRate, formatWholeCurrency, pluralize } from './format'
 import { parseHundredths, parseWholeNumber } from './numberInput'
 import { ProjectionResults } from './ProjectionResults'
+import {
+  maximumInflationPercent,
+  maximumProjectionYears,
+  projectionMessages,
+  translateProjectionError,
+  type ProjectionField,
+} from './projectionErrors'
 import { currencyCodePattern, importedItemProblems } from './itemValidation'
 import { clearSavedSession, loadSavedSession, saveSession } from './savedSession'
 
@@ -32,7 +39,6 @@ const emptyForm = {
 type FormState = typeof emptyForm
 
 type ItemField = 'amount' | 'currency' | 'annualReturnRate' | 'drawdownAnnualReturnRate' | 'annualContribution'
-type ProjectionField = 'savingYears' | 'drawdownYears' | 'annualWithdrawal' | 'withdrawalInflationRate'
 type FieldErrors<Field extends string> = Partial<Record<Field, string>>
 
 const defaultProjectionForm = {
@@ -42,11 +48,8 @@ const defaultProjectionForm = {
   withdrawalInflationRate: '3.00',
 }
 
-const maximumProjectionYears = 75
 const dollarAmountError = 'Enter a dollar amount like 1,000 or 1000.50.'
 const signedPercentError = 'Enter a percentage like 7 or -2.5.'
-const percentError = 'Enter a percentage of 0 or more, like 3.'
-const yearsError = `Enter a whole number of years from 0 to ${maximumProjectionYears}.`
 const currencyError = 'Use a 3-letter currency code like USD.'
 
 function App() {
@@ -428,11 +431,17 @@ function App() {
       setProjection(nextProjection)
       setProjectionItemsSignature(itemsSignature)
     } catch (error) {
-      const message = getErrorMessage(error)
+      const { fieldErrors, messages } = translateProjectionError(
+        getErrorMessage(error),
+        items.map((item) => item.name),
+      )
+      setProjectionFieldErrors((current) => ({ ...current, ...fieldErrors }))
+      const reason =
+        messages.length > 0 ? messages.join(' ') : 'Fix the highlighted settings and calculate again.'
       if (projection) {
-        setProjectionMessage(`Projection is updating. Showing the last successful projection. ${message}`)
+        setProjectionMessage(`Couldn’t update the projection. ${reason} Showing your last projection until then.`)
       } else {
-        setErrorMessage(message)
+        setErrorMessage(`Couldn’t calculate the projection. ${reason}`)
       }
     } finally {
       setIsCalculatingProjection(false)
@@ -930,12 +939,30 @@ function validateProjectionForm(
   const annualWithdrawalCents = parseHundredths(values.annualWithdrawal)
   const annualWithdrawalInflationRateBasisPoints = parseHundredths(values.withdrawalInflationRate)
 
-  if (savingYears === null) errors.savingYears = yearsError
-  if (drawdownYears === null) errors.drawdownYears = yearsError
-  if (annualWithdrawalCents === null) errors.annualWithdrawal = dollarAmountError
-  if (annualWithdrawalInflationRateBasisPoints === null) errors.withdrawalInflationRate = percentError
+  if (savingYears === null) errors.savingYears = projectionMessages.years
+  if (drawdownYears === null) errors.drawdownYears = projectionMessages.years
+  if (annualWithdrawalCents === null) errors.annualWithdrawal = projectionMessages.dollarAmount
+  if (annualWithdrawalInflationRateBasisPoints === null) errors.withdrawalInflationRate = projectionMessages.inflation
 
-  if (savingYears === null || drawdownYears === null || annualWithdrawalCents === null || annualWithdrawalInflationRateBasisPoints === null) {
+  // The same rules the projection API enforces, so they show up next to the
+  // field instead of as an API error.
+  if (savingYears !== null && drawdownYears !== null && savingYears + drawdownYears === 0) {
+    errors.drawdownYears = projectionMessages.noYears
+  }
+  if (drawdownYears !== null && drawdownYears > 0 && annualWithdrawalCents === 0) {
+    errors.annualWithdrawal = projectionMessages.withdrawalRequired
+  }
+  if (annualWithdrawalInflationRateBasisPoints !== null && annualWithdrawalInflationRateBasisPoints > maximumInflationPercent * 100) {
+    errors.withdrawalInflationRate = projectionMessages.inflationRange
+  }
+
+  if (
+    savingYears === null ||
+    drawdownYears === null ||
+    annualWithdrawalCents === null ||
+    annualWithdrawalInflationRateBasisPoints === null ||
+    Object.keys(errors).length > 0
+  ) {
     return { request: null, errors }
   }
 
