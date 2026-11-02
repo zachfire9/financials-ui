@@ -97,6 +97,47 @@ const drawdownProjection = {
   ],
 }
 
+const shortfallProjection = {
+  years: 3,
+  savingYears: 0,
+  drawdownYears: 3,
+  currency: 'USD',
+  items: [
+    {
+      id: 'item_000001',
+      name: 'Example brokerage',
+      startingAmountCents: 8000,
+      annualReturnRateBasisPoints: 0,
+      annualContributionCents: 0,
+      yearlyBalances: [
+        { year: 0, phase: 'starting', balanceCents: 8000, contributionCents: 0, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 0 },
+        { year: 1, phase: 'drawdown', balanceCents: 1333, contributionCents: 0, withdrawalCents: 6667, growthCents: 0, unfundedWithdrawalCents: 0 },
+        { year: 2, phase: 'drawdown', balanceCents: 0, contributionCents: 0, withdrawalCents: 1333, growthCents: 0, unfundedWithdrawalCents: 5334 },
+        { year: 3, phase: 'drawdown', balanceCents: 0, contributionCents: 0, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 5000 },
+      ],
+    },
+    {
+      id: 'item_000002',
+      name: 'Example savings',
+      startingAmountCents: 4000,
+      annualReturnRateBasisPoints: 0,
+      annualContributionCents: 0,
+      yearlyBalances: [
+        { year: 0, phase: 'starting', balanceCents: 4000, contributionCents: 0, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 0 },
+        { year: 1, phase: 'drawdown', balanceCents: 667, contributionCents: 0, withdrawalCents: 3333, growthCents: 0, unfundedWithdrawalCents: 0 },
+        { year: 2, phase: 'drawdown', balanceCents: 0, contributionCents: 0, withdrawalCents: 667, growthCents: 0, unfundedWithdrawalCents: 2666 },
+        { year: 3, phase: 'drawdown', balanceCents: 0, contributionCents: 0, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 5000 },
+      ],
+    },
+  ],
+  totals: [
+    { year: 0, phase: 'starting', balanceCents: 12000, contributionCents: 0, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 0 },
+    { year: 1, phase: 'drawdown', balanceCents: 2000, contributionCents: 0, withdrawalCents: 10000, growthCents: 0, unfundedWithdrawalCents: 0 },
+    { year: 2, phase: 'drawdown', balanceCents: 0, contributionCents: 0, withdrawalCents: 2000, growthCents: 0, unfundedWithdrawalCents: 8000 },
+    { year: 3, phase: 'drawdown', balanceCents: 0, contributionCents: 0, withdrawalCents: 0, growthCents: 0, unfundedWithdrawalCents: 10000 },
+  ],
+}
+
 describe('Financial items app', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -356,6 +397,8 @@ describe('Financial items app', () => {
     expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
     expect(screen.queryByText('Projection totals')).not.toBeInTheDocument()
     expect(screen.queryByText(/example brokerage ends at/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/all planned withdrawals are fully funded through year 3/i)).toBeInTheDocument()
+    expect(screen.queryByText(/withdrawals run short/i)).not.toBeInTheDocument()
 
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
       'Year',
@@ -402,6 +445,74 @@ describe('Financial items app', () => {
         annualWithdrawalInflationRateBasisPoints: 300,
       }),
     })
+  })
+
+  it('highlights drawdown years where planned withdrawals cannot be covered', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([exampleItem, secondItem]))
+      .mockResolvedValueOnce(jsonResponse(shortfallProjection))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /calculate projection/i }))
+    expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
+
+    const status = screen.getByText(/withdrawals run short starting in year 2/i).closest('p')
+    expect(status).toHaveClass('funding-status', 'shortfall')
+    expect(status).toHaveTextContent('(drawdown year 2)')
+    expect(status).toHaveTextContent("$180.00 of planned withdrawals can't be covered over the projection.")
+    expect(screen.queryByText(/fully funded/i)).not.toBeInTheDocument()
+
+    expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      'Year',
+      'Phase',
+      'Annual withdrawal',
+      'Shortfall',
+      'Item',
+      'Contribution',
+      'Withdrawal',
+      'Growth',
+      'Item balance',
+      'Combined balance',
+    ])
+
+    const bodyRows = screen.getAllByRole('row').slice(1)
+    expect(bodyRows.map((row) => row.className)).toEqual([
+      '',
+      '',
+      '',
+      '',
+      'shortfall-row',
+      'shortfall-row',
+      'shortfall-row',
+      'shortfall-row',
+    ])
+    expect(within(bodyRows[4]).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
+      'Year 2',
+      'Drawdown',
+      '$20.00',
+      '$80.00',
+      'Example brokerage',
+      '$0.00',
+      '$13.33',
+      '$0.00',
+      '$0.00',
+      '$0.00',
+    ])
+    expect(within(bodyRows[5]).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
+      '',
+      '',
+      '',
+      '',
+      'Example savings',
+      '$0.00',
+      '$6.67',
+      '$0.00',
+      '$0.00',
+      '',
+    ])
   })
 
   it('exports and imports JSON backups for financial items', async () => {
@@ -456,6 +567,8 @@ describe('Financial items app', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /calculate projection/i }))
     expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
+    expect(screen.queryByText(/fully funded|withdrawals run short/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Shortfall' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
 

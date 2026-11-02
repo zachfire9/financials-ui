@@ -526,12 +526,17 @@ function App() {
 
 function ProjectionResults({ projection }: { projection: Projection }) {
   const finalYear = projection.totals[projection.totals.length - 1]
+  const shortfallYears = projection.totals.filter((total) => (total.unfundedWithdrawalCents ?? 0) > 0)
+  const firstShortfallYear = shortfallYears[0]
+  const totalShortfallCents = shortfallYears.reduce((sum, total) => sum + (total.unfundedWithdrawalCents ?? 0), 0)
+  const hasDrawdown = projection.totals.some((total) => total.phase === 'drawdown')
   const rows = projection.totals.flatMap((total) =>
     projection.items.map((item, itemIndex) => ({
       annualWithdrawalCents: total.withdrawalCents ?? 0,
       combinedBalanceCents: total.balanceCents,
       isFirstItemForYear: itemIndex === 0,
       item,
+      shortfallCents: total.unfundedWithdrawalCents ?? 0,
       yearlyBalance: item.yearlyBalances.find((yearlyBalance) => yearlyBalance.year === total.year),
       year: total.year,
     })),
@@ -547,6 +552,20 @@ function ProjectionResults({ projection }: { projection: Projection }) {
           {formatCurrency(finalYear.withdrawalCents ?? 0, projection.currency)} withdrawals, and{' '}
           {formatCurrency(finalYear.growthCents, projection.currency)} growth in the final year.
         </p>
+        {firstShortfallYear ? (
+          <p className="funding-status shortfall">
+            <span aria-hidden="true">⚠ </span>
+            <strong>Withdrawals run short starting in year {firstShortfallYear.year}</strong> (drawdown year{' '}
+            {firstShortfallYear.year - (projection.savingYears ?? 0)}).{' '}
+            {formatCurrency(totalShortfallCents, projection.currency)} of planned withdrawals can't be covered over the
+            projection.
+          </p>
+        ) : hasDrawdown ? (
+          <p className="funding-status funded">
+            <span aria-hidden="true">✓ </span>
+            All planned withdrawals are fully funded through year {finalYear.year}.
+          </p>
+        ) : null}
       </div>
 
       <div className="table-scroll">
@@ -557,6 +576,7 @@ function ProjectionResults({ projection }: { projection: Projection }) {
               <th scope="col">Year</th>
               <th scope="col">Phase</th>
               <th scope="col">Annual withdrawal</th>
+              {firstShortfallYear ? <th scope="col">Shortfall</th> : null}
               <th scope="col">Item</th>
               <th scope="col">Contribution</th>
               <th scope="col">Withdrawal</th>
@@ -566,16 +586,19 @@ function ProjectionResults({ projection }: { projection: Projection }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ annualWithdrawalCents, combinedBalanceCents, isFirstItemForYear, item, yearlyBalance, year }) => {
+            {rows.map(({ annualWithdrawalCents, combinedBalanceCents, isFirstItemForYear, item, shortfallCents, yearlyBalance, year }) => {
               if (!yearlyBalance) {
                 return null
               }
 
               return (
-                <tr key={`${year}-${item.id || item.name}`}>
+                <tr key={`${year}-${item.id || item.name}`} className={shortfallCents > 0 ? 'shortfall-row' : undefined}>
                   <td>{isFirstItemForYear ? `Year ${year}` : ''}</td>
                   <td>{isFirstItemForYear ? formatPhase(yearlyBalance.phase) : ''}</td>
                   <td>{isFirstItemForYear ? formatCurrency(annualWithdrawalCents, projection.currency) : ''}</td>
+                  {firstShortfallYear ? (
+                    <td>{isFirstItemForYear ? formatCurrency(shortfallCents, projection.currency) : ''}</td>
+                  ) : null}
                   <td>{item.name}</td>
                   <td>{formatCurrency(yearlyBalance.contributionCents, projection.currency)}</td>
                   <td>{formatCurrency(yearlyBalance.withdrawalCents ?? 0, projection.currency)}</td>
