@@ -1,4 +1,4 @@
-import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import {
   calculateProjection,
   createFinancialItem,
@@ -43,6 +43,9 @@ function App() {
   const [staleMessage, setStaleMessage] = useState<string | null>(null)
   const [backupMessage, setBackupMessage] = useState<string | null>(null)
   const [projectionMessage, setProjectionMessage] = useState<string | null>(null)
+  // Highest session-item number handed out in this browser session, so IDs of
+  // deleted items are never reused.
+  const lastSessionItemNumber = useRef(0)
 
   const editingItem = useMemo(
     () => items.find((item) => item.id === editingItemId) ?? null,
@@ -156,7 +159,7 @@ function App() {
         }
       } else {
         if (isEphemeralSession) {
-          const createdItem = localItemFromPayload(formToPayload(form, nextSortOrder(items)), nextLocalItemID(items))
+          const createdItem = localItemFromPayload(formToPayload(form, nextSortOrder(items)), issueSessionItemID(items))
           setItems((currentItems) => [...currentItems, createdItem].sort(compareFinancialItems))
         } else {
           const createdItem = await createFinancialItem(formToPayload(form, nextSortOrder(items)))
@@ -169,6 +172,12 @@ function App() {
     } finally {
       setIsSaving(false)
     }
+  }
+
+  function issueSessionItemID(currentItems: FinancialItem[]) {
+    const next = Math.max(lastSessionItemNumber.current, highestSessionItemNumber(currentItems)) + 1
+    lastSessionItemNumber.current = next
+    return sessionItemID(next)
   }
 
   async function handleDelete(item: FinancialItem) {
@@ -642,9 +651,23 @@ function backupItemsFromJSON(backup: FinancialItemsBackup) {
     throw new Error('Backup JSON must include an items array.')
   }
 
+  // Keep each ID the first time it appears. Missing or repeated IDs get new
+  // numbers above the highest session-item number in the file.
+  const seenIDs = new Set<string>()
+  let lastSessionItemNumber = highestSessionItemNumber(backup.items)
   return backup.items.map((item, index) => ({
     ...item,
-    id: item.id || `session-item-${index + 1}`,
+    id: (() => {
+      const id = typeof item.id === 'string' ? item.id.trim() : ''
+      if (id !== '' && !seenIDs.has(id)) {
+        seenIDs.add(id)
+        return id
+      }
+      lastSessionItemNumber += 1
+      const freshID = sessionItemID(lastSessionItemNumber)
+      seenIDs.add(freshID)
+      return freshID
+    })(),
     inflateAnnualContribution: item.inflateAnnualContribution ?? false,
     sortOrder: item.sortOrder ?? index,
     createdAt: item.createdAt || new Date().toISOString(),
@@ -677,8 +700,17 @@ function localItemFromPayload(payload: FinancialItemPayload, id: string, created
   }
 }
 
-function nextLocalItemID(items: FinancialItem[]) {
-  return `session-item-${items.length + 1}`
+const sessionItemIDPattern = /^session-item-(\d+)$/
+
+function sessionItemID(sessionItemNumber: number) {
+  return `session-item-${sessionItemNumber}`
+}
+
+function highestSessionItemNumber(items: Array<{ id?: unknown }>) {
+  return items.reduce((highest, item) => {
+    const match = typeof item.id === 'string' ? sessionItemIDPattern.exec(item.id.trim()) : null
+    return match ? Math.max(highest, Number(match[1])) : highest
+  }, 0)
 }
 
 function isEphemeralSessionMode() {
