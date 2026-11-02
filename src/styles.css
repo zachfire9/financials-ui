@@ -288,6 +288,26 @@ h3 {
   font-weight: 900;
 }
 
+.projection-summary-card .funding-status {
+  border-radius: 14px;
+  margin-top: 0.75rem;
+  padding: 0.7rem 0.9rem;
+}
+
+.projection-summary-card .funding-status.shortfall {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.projection-summary-card .funding-status.funded {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.shortfall-row td {
+  background: #fffbeb;
+}
+
 .table-scroll {
   overflow-x: auto;
 }
