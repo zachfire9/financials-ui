@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from 'react'
+import { clearSavedSession } from './savedSession'
 
 type ErrorBoundaryProps = {
   children: ReactNode
@@ -30,9 +31,22 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         <section className="crash-panel" role="alert">
           <h2>Something went wrong</h2>
           <p>The page hit an unexpected error. Reloading usually fixes it.</p>
-          <button type="button" onClick={() => window.location.reload()}>
-            Reload the page
-          </button>
+          <div className="form-actions">
+            <button type="button" onClick={() => window.location.reload()}>
+              Reload the page
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                clearSavedSession()
+                window.location.reload()
+              }}
+            >
+              Clear saved session and reload
+            </button>
+          </div>
+          <p>If reloading shows this again, clearing the session saved in this browser removes the data causing it.</p>
         </section>
       </main>
     )

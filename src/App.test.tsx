@@ -141,11 +141,13 @@ const shortfallProjection = {
 describe('Financial items app', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    window.localStorage.clear()
   })
 
   afterEach(() => {
     cleanup()
     vi.unstubAllEnvs()
+    window.localStorage.clear()
   })
 
   it('runs ephemeral sessions from imported browser-owned data without loading or saving repository items', async () => {
@@ -156,7 +158,7 @@ describe('Financial items app', () => {
     render(<App />)
 
     expect(screen.getByText(/ephemeral session mode/i)).toBeInTheDocument()
-    expect(screen.getByText(/refreshing or closing the browser loses unsaved changes/i)).toBeInTheDocument()
+    expect(screen.getByText(/saved in this browser only/i)).toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
     expect(screen.queryByRole('button', { name: /refresh/i })).not.toBeInTheDocument()
 
@@ -299,6 +301,129 @@ describe('Financial items app', () => {
     expect(error).toHaveTextContent('Item 2: currency must be a 3-letter code such as USD.')
     expect(screen.getByText('Existing account')).toBeInTheDocument()
     expect(screen.queryByText('Example brokerage')).not.toBeInTheDocument()
+  })
+
+  it('restores an ephemeral session saved in this browser after a reload', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+
+    const firstVisit = render(<App />)
+    addSessionItem('Account A')
+    addSessionItem('Account B')
+    await screen.findByText('Account B')
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Account B' }))
+    fireEvent.change(screen.getByLabelText(/saving years/i), { target: { value: '20' } })
+    firstVisit.unmount()
+
+    const exportItems = stubBackupDownload()
+    render(<App />)
+
+    expect(screen.getByText('Restored 1 item saved in this browser.')).toBeInTheDocument()
+    expect(screen.getByText('Account A')).toBeInTheDocument()
+    expect(screen.queryByText('Account B')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/saving years/i)).toHaveValue('20')
+
+    // The ID counter is restored too, so the deleted item's ID isn't reused.
+    addSessionItem('Account C')
+    await screen.findByText('Account C')
+    expect((await exportItems()).map((item) => item.id)).toEqual(['session-item-1', 'session-item-3'])
+  })
+
+  it('ignores corrupt or invalid saved sessions', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+
+    for (const saved of [
+      '{not json',
+      JSON.stringify({ version: 2, items: [] }),
+      JSON.stringify({
+        version: 1,
+        items: [{ ...exampleItem, id: 'session-item-1', currency: 'US' }],
+        projectionForm: { savingYears: '10', drawdownYears: '0', annualWithdrawal: '0.00', withdrawalInflationRate: '3.00' },
+        lastSessionItemNumber: 1,
+      }),
+    ]) {
+      window.localStorage.setItem('financials.session.v1', saved)
+      const view = render(<App />)
+      expect(screen.getByText(/no financial items yet/i)).toBeInTheDocument()
+      expect(screen.queryByText(/restored/i)).not.toBeInTheDocument()
+      view.unmount()
+    }
+  })
+
+  it('keeps working when browser storage is blocked', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError')
+    })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError')
+    })
+
+    render(<App />)
+    addSessionItem('Account A')
+
+    expect(await screen.findByText('Account A')).toBeInTheDocument()
+  })
+
+  it('clears the saved ephemeral session only after confirmation', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+
+    render(<App />)
+    addSessionItem('Account A')
+    await screen.findByText('Account A')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear session' }))
+    expect(screen.getByText('Account A')).toBeInTheDocument()
+    expect(window.localStorage.getItem('financials.session.v1')).toContain('Account A')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear session' }))
+    expect(confirm).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText('Account A')).not.toBeInTheDocument()
+    expect(screen.getByText('Session cleared. Nothing is saved in this browser.')).toBeInTheDocument()
+    expect(JSON.parse(window.localStorage.getItem('financials.session.v1') ?? '{}').items).toEqual([])
+  })
+
+  it('does not save API-backed items in browser storage', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(jsonResponse([exampleItem])))
+
+    render(<App />)
+
+    expect(await screen.findByText('Example brokerage')).toBeInTheDocument()
+    expect(window.localStorage.getItem('financials.session.v1')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Clear session' })).not.toBeInTheDocument()
+  })
+
+  it('flags a projection as out of date when items change after calculating', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => jsonResponse(exampleProjection)))
+
+    render(<App />)
+    addSessionItem('Account A')
+    addSessionItem('Account B')
+    await screen.findByText('Account B')
+
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+    expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
+    expect(screen.queryByText(/items changed since this projection/i)).not.toBeInTheDocument()
+
+    // Reordering doesn't change the projection's inputs.
+    const cards = screen.getAllByRole('listitem')
+    fireEvent.dragStart(cards[1])
+    fireEvent.drop(cards[0])
+    expect(screen.queryByText(/items changed since this projection/i)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Account A' }))
+    fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '2000' } })
+    fireEvent.click(screen.getByRole('button', { name: /save item/i }))
+
+    expect(await screen.findByText('Your items changed since this projection. Recalculate to update.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+    await waitFor(() => expect(screen.queryByText(/items changed since this projection/i)).not.toBeInTheDocument())
   })
 
   it('exports ephemeral browser-owned data without calling the backup API', async () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ErrorBoundary } from './ErrorBoundary'
 
@@ -24,6 +24,24 @@ describe('ErrorBoundary', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong')
     expect(screen.getByRole('button', { name: 'Reload the page' })).toBeInTheDocument()
+  })
+
+  it('can clear the saved browser session before reloading', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const reload = vi.fn()
+    vi.stubGlobal('location', { ...window.location, reload })
+    window.localStorage.setItem('financials.session.v1', '{"version":1}')
+
+    render(
+      <ErrorBoundary>
+        <Thrower />
+      </ErrorBoundary>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Clear saved session and reload' }))
+
+    expect(window.localStorage.getItem('financials.session.v1')).toBeNull()
+    expect(reload).toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 
   it('renders children normally when nothing throws', () => {
