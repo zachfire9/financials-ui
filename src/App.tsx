@@ -1,4 +1,4 @@
-import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, DragEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   calculateProjection,
   createFinancialItem,
@@ -12,7 +12,17 @@ import {
   Projection,
   updateFinancialItem,
 } from './financialItemsApi'
+import { accountColors, otherAccountColor } from './charts/chartUtils'
+import { formatCurrency, formatRate, formatWholeCurrency, pluralize } from './format'
 import { parseHundredths, parseWholeNumber } from './numberInput'
+import { ProjectionResults } from './ProjectionResults'
+import {
+  maximumInflationPercent,
+  maximumProjectionYears,
+  projectionMessages,
+  translateProjectionError,
+  type ProjectionField,
+} from './projectionErrors'
 import { currencyCodePattern, importedItemProblems } from './itemValidation'
 import { clearSavedSession, loadSavedSession, saveSession } from './savedSession'
 
@@ -29,7 +39,6 @@ const emptyForm = {
 type FormState = typeof emptyForm
 
 type ItemField = 'amount' | 'currency' | 'annualReturnRate' | 'drawdownAnnualReturnRate' | 'annualContribution'
-type ProjectionField = 'savingYears' | 'drawdownYears' | 'annualWithdrawal' | 'withdrawalInflationRate'
 type FieldErrors<Field extends string> = Partial<Record<Field, string>>
 
 const defaultProjectionForm = {
@@ -39,11 +48,8 @@ const defaultProjectionForm = {
   withdrawalInflationRate: '3.00',
 }
 
-const maximumProjectionYears = 75
 const dollarAmountError = 'Enter a dollar amount like 1,000 or 1000.50.'
 const signedPercentError = 'Enter a percentage like 7 or -2.5.'
-const percentError = 'Enter a percentage of 0 or more, like 3.'
-const yearsError = `Enter a whole number of years from 0 to ${maximumProjectionYears}.`
 const currencyError = 'Use a 3-letter currency code like USD.'
 
 function App() {
@@ -86,6 +92,37 @@ function App() {
   // Highest session-item number handed out in this browser session, so IDs of
   // deleted items are never reused.
   const lastSessionItemNumber = useRef(restoredSession?.lastSessionItemNumber ?? 0)
+
+  // Each account keeps its color slot for the whole session, so deleting or
+  // reordering accounts never repaints the others in the charts.
+  const colorSlots = useRef(new Map<string, number>())
+  const assignedColorSlots = useMemo(() => {
+    const slots = colorSlots.current
+    const currentIDs = new Set(items.map((item) => item.id))
+    for (const id of [...slots.keys()]) {
+      if (!currentIDs.has(id)) {
+        slots.delete(id)
+      }
+    }
+    for (const item of items) {
+      if (!slots.has(item.id)) {
+        const used = new Set(slots.values())
+        let slot = 0
+        while (used.has(slot)) {
+          slot += 1
+        }
+        slots.set(item.id, slot)
+      }
+    }
+    return new Map(slots)
+  }, [items])
+  const colorFor = useCallback(
+    (itemId: string, index: number) => {
+      const slot = assignedColorSlots.get(itemId) ?? index
+      return slot < accountColors.length ? accountColors[slot] : otherAccountColor
+    },
+    [assignedColorSlots],
+  )
 
   const editingItem = useMemo(
     () => items.find((item) => item.id === editingItemId) ?? null,
@@ -387,39 +424,125 @@ function App() {
     try {
       const projectionRequest = {
         ...projectionInputs,
-        ...(isEphemeralSession ? { items: items.map(itemToPayload) } : {}),
+        ...(isEphemeralSession ? { items: items.map((item) => ({ id: item.id, ...itemToPayload(item) })) } : {}),
       }
       const itemsSignature = signatureForProjection(items)
       const nextProjection = await calculateProjection(projectionRequest)
       setProjection(nextProjection)
       setProjectionItemsSignature(itemsSignature)
     } catch (error) {
-      const message = getErrorMessage(error)
+      const { fieldErrors, messages } = translateProjectionError(
+        getErrorMessage(error),
+        items.map((item) => item.name),
+      )
+      setProjectionFieldErrors((current) => ({ ...current, ...fieldErrors }))
+      const reason =
+        messages.length > 0 ? messages.join(' ') : 'Fix the highlighted settings and calculate again.'
       if (projection) {
-        setProjectionMessage(`Projection is updating. Showing the last successful projection. ${message}`)
+        setProjectionMessage(`Couldn’t update the projection. ${reason} Showing your last projection until then.`)
       } else {
-        setErrorMessage(message)
+        setErrorMessage(`Couldn’t calculate the projection. ${reason}`)
       }
     } finally {
       setIsCalculatingProjection(false)
     }
   }
 
+  const accountsTotalCents = items.reduce((sum, item) => sum + item.amountCents, 0)
+  const accountsCurrency = items[0]?.currency ?? 'USD'
+  const projectionIsStale =
+    projection !== null && projectionItemsSignature !== null && signatureForProjection(items) !== projectionItemsSignature
+
   return (
-    <main className="app-shell">
-      <section className="content-grid" aria-label="Financial items workspace">
-        <form className="item-form" onSubmit={handleSubmit}>
-          <div>
-            <p className="eyebrow">{editingItem ? 'Edit item' : 'Add item'}</p>
-            <h2>{editingItem ? `Editing ${editingItem.name}` : 'Financial item details'}</h2>
+    <div className="app-layout">
+      <aside className="sidebar">
+        <header className="brand">
+          <span className="brand-mark" aria-hidden="true" />
+          <h1>Financials Planner</h1>
+        </header>
+
+        <section className="accounts" aria-labelledby="items-heading">
+          <div className="accounts-heading">
+            <h2 id="items-heading">Accounts</h2>
+            {items.length > 0 ? (
+              <p className="accounts-total">
+                <span className="visually-hidden">Total today </span>
+                {formatWholeCurrency(accountsTotalCents, accountsCurrency)}
+              </p>
+            ) : null}
           </div>
+          {isEphemeralSession ? (
+            <p className="sidebar-note">
+              <span className="visually-hidden">Ephemeral session mode. </span>
+              Saved in this browser only. Use Export JSON to back up or move to another device.
+            </p>
+          ) : null}
+
+          {isLoading ? <p className="sidebar-status">Loading accounts…</p> : null}
+          {staleMessage ? <p className="sidebar-status warning">{staleMessage}</p> : null}
+          {backupMessage ? <p className="sidebar-status">{backupMessage}</p> : null}
+
+          {!isLoading && items.length === 0 ? (
+            <p className="accounts-empty">No accounts yet. Add your first one below to start a projection.</p>
+          ) : null}
+
+          <ul className="item-list">
+            {items.map((item, index) => (
+              <li
+                key={item.id}
+                className={[
+                  'item-card',
+                  item.id === draggingItemId ? 'dragging' : '',
+                  item.id === editingItemId ? 'editing' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                draggable
+                onDragStart={() => handleDragStart(item)}
+                onDragOver={handleDragOver}
+                onDrop={() => handleDrop(item)}
+              >
+                <span className="account-swatch" style={{ background: colorFor(item.id, index) }} aria-hidden="true" />
+                <div className="account-body">
+                  <div className="account-title">
+                    <h3>{item.name}</h3>
+                    <p className="account-amount">
+                      {item.amountCents % 100 === 0
+                        ? formatWholeCurrency(item.amountCents, item.currency)
+                        : formatCurrency(item.amountCents, item.currency)}
+                    </p>
+                  </div>
+                  <p className="account-details">{describeGrowth(item)}</p>
+                  <p className="account-details">{describeContribution(item)}</p>
+                  <div className="item-actions">
+                    <button type="button" className="text-button" aria-label={`Edit ${item.name}`} onClick={() => startEditing(item)}>
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="text-button danger"
+                      aria-label={`Delete ${item.name}`}
+                      onClick={() => void handleDelete(item)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {items.length > 1 ? <p className="sidebar-hint">Drag accounts to reorder them.</p> : null}
+        </section>
+
+        <form className="item-form" onSubmit={handleSubmit} aria-labelledby="item-form-heading">
+          <h2 id="item-form-heading">{editingItem ? `Edit ${editingItem.name}` : 'Add an account'}</h2>
 
           <label>
             Name
             <input
               value={form.name}
               onChange={(event) => setForm({ ...form, name: event.target.value })}
-              placeholder="Example brokerage"
+              placeholder="Example: Roth IRA"
               required
             />
           </label>
@@ -432,7 +555,7 @@ function App() {
                   inputMode="decimal"
                   value={form.amount}
                   onChange={(event) => updateItemField('amount', event.target.value)}
-                  placeholder="10000.00"
+                  placeholder="10,000"
                   required
                   aria-invalid={itemFieldErrors.amount ? true : undefined}
                   aria-describedby={itemFieldErrors.amount ? 'amount-error' : undefined}
@@ -440,7 +563,7 @@ function App() {
               </label>
               <FieldError id="amount-error" message={itemFieldErrors.amount} />
             </div>
-            <div className="form-field">
+            <div className="form-field narrow">
               <label>
                 Currency
                 <input
@@ -464,7 +587,7 @@ function App() {
                   inputMode="decimal"
                   value={form.annualReturnRate}
                   onChange={(event) => updateItemField('annualReturnRate', event.target.value)}
-                  placeholder="7.00"
+                  placeholder="7"
                   required
                   aria-invalid={itemFieldErrors.annualReturnRate ? true : undefined}
                   aria-describedby={itemFieldErrors.annualReturnRate ? 'annual-return-error' : undefined}
@@ -479,325 +602,183 @@ function App() {
                   inputMode="decimal"
                   value={form.drawdownAnnualReturnRate}
                   onChange={(event) => updateItemField('drawdownAnnualReturnRate', event.target.value)}
-                  placeholder="Uses annual return when blank"
+                  placeholder="Same"
                   aria-invalid={itemFieldErrors.drawdownAnnualReturnRate ? true : undefined}
-                  aria-describedby={itemFieldErrors.drawdownAnnualReturnRate ? 'drawdown-return-error' : undefined}
+                  aria-describedby={
+                    itemFieldErrors.drawdownAnnualReturnRate ? 'drawdown-return-help drawdown-return-error' : 'drawdown-return-help'
+                  }
                 />
-                <span className="field-help">Uses annual return when blank.</span>
               </label>
+              <span className="field-help" id="drawdown-return-help">
+                Uses annual return when blank.
+              </span>
               <FieldError id="drawdown-return-error" message={itemFieldErrors.drawdownAnnualReturnRate} />
             </div>
-            <div className="form-field">
-              <label>
-                Annual contribution
-                <input
-                  inputMode="decimal"
-                  value={form.annualContribution}
-                  onChange={(event) => updateItemField('annualContribution', event.target.value)}
-                  placeholder="3000.00"
-                  required
-                  aria-invalid={itemFieldErrors.annualContribution ? true : undefined}
-                  aria-describedby={itemFieldErrors.annualContribution ? 'annual-contribution-error' : undefined}
-                />
-              </label>
-              <FieldError id="annual-contribution-error" message={itemFieldErrors.annualContribution} />
-            </div>
-            <label className="checkbox-control">
-              <input
-                type="checkbox"
-                checked={form.inflateAnnualContribution}
-                onChange={(event) => setForm({ ...form, inflateAnnualContribution: event.target.checked })}
-              />
-              Grow this item’s contribution with inflation (uses the projection’s Inflation rate)
-            </label>
           </div>
 
-          {errorMessage ? <p className="status-message error">{errorMessage}</p> : null}
+          <div className="form-field">
+            <label>
+              Annual contribution
+              <input
+                inputMode="decimal"
+                value={form.annualContribution}
+                onChange={(event) => updateItemField('annualContribution', event.target.value)}
+                placeholder="6,000"
+                required
+                aria-invalid={itemFieldErrors.annualContribution ? true : undefined}
+                aria-describedby={itemFieldErrors.annualContribution ? 'annual-contribution-error' : undefined}
+              />
+            </label>
+            <FieldError id="annual-contribution-error" message={itemFieldErrors.annualContribution} />
+          </div>
+          <label className="checkbox-control">
+            <input
+              type="checkbox"
+              checked={form.inflateAnnualContribution}
+              onChange={(event) => setForm({ ...form, inflateAnnualContribution: event.target.checked })}
+            />
+            Grow this item’s contribution with inflation (uses the projection’s Inflation rate)
+          </label>
 
           <div className="form-actions">
-            <button type="submit" disabled={isSaving}>
-              {editingItem ? 'Save item' : 'Add item'}
+            <button type="submit" className="primary-button" disabled={isSaving}>
+              {editingItem ? 'Save account' : 'Add account'}
             </button>
             {editingItem ? (
-              <button type="button" className="secondary" onClick={resetForm}>
+              <button type="button" className="ghost-button" onClick={resetForm}>
                 Cancel edit
               </button>
             ) : null}
           </div>
         </form>
 
-        <section className="items-panel" aria-labelledby="items-heading">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">{isEphemeralSession ? 'Ephemeral session mode' : 'API-backed list'}</p>
-              <h2 id="items-heading">Financial items</h2>
-              {isEphemeralSession ? (
-                <p className="panel-help">
-                  Saved in this browser only. Use Export JSON to back up or move to another device.
-                </p>
-              ) : null}
-              {items.length > 1 ? <p className="panel-help">Drag items to reorder them.</p> : null}
-            </div>
-            <div className="panel-actions">
-              <button type="button" className="secondary" onClick={() => void handleBackupExport()}>
-                Export JSON backup
-              </button>
-              <label className="file-button">
-                Import JSON backup
-                <input type="file" accept="application/json,.json" onChange={(event) => void handleBackupImport(event)} />
-              </label>
-              {!isEphemeralSession ? (
-                <button type="button" className="secondary" onClick={() => void loadItems()}>
-                  Refresh
-                </button>
-              ) : null}
-              {isEphemeralSession ? (
-                <button type="button" className="secondary" onClick={handleClearSession}>
-                  Clear session
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          {isLoading ? <p className="status-message">Loading financial items…</p> : null}
-          {staleMessage ? <p className="status-message warning">{staleMessage}</p> : null}
-          {backupMessage ? <p className="status-message">{backupMessage}</p> : null}
-
-          {!isLoading && items.length === 0 ? (
-            <p className="empty-state">No financial items yet. Add an example planning input to get started.</p>
-          ) : null}
-
-          <ul className="item-list">
-            {items.map((item) => (
-              <li
-                key={item.id}
-                className={item.id === draggingItemId ? 'item-card dragging' : 'item-card'}
-                draggable
-                onDragStart={() => handleDragStart(item)}
-                onDragOver={handleDragOver}
-                onDrop={() => handleDrop(item)}
-              >
-                <div className="item-summary">
-                  <span className="drag-handle" aria-hidden="true">
-                    ⋮⋮
-                  </span>
-                  <div>
-                    <h3>{item.name}</h3>
-                    <p>
-                      {formatCurrency(item.amountCents, item.currency)} · {formatRate(item.annualReturnRateBasisPoints)} return ·{' '}
-                      {formatDrawdownReturn(item)} · {formatCurrency(item.annualContributionCents, item.currency)} annual contribution
-                      {item.inflateAnnualContribution ? ' · contribution grows with inflation' : ''}
-                    </p>
-                  </div>
-                </div>
-                <div className="item-actions">
-                  <button type="button" className="secondary" onClick={() => startEditing(item)}>
-                    Edit {item.name}
-                  </button>
-                  <button type="button" className="danger" onClick={() => void handleDelete(item)}>
-                    Delete {item.name}
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section className="projection-panel" aria-labelledby="projection-heading">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">{isEphemeralSession ? 'Browser-owned projection' : 'Repository-backed projection'}</p>
-              <h2 id="projection-heading">Projection preview</h2>
-              <p className="panel-help">
-                {isEphemeralSession
-                  ? 'Calculate saving and drawdown years from the financial items currently in this browser session.'
-                  : 'Calculate saving and drawdown years from the current saved financial items.'}
-              </p>
-            </div>
-          </div>
-
-          <form className="projection-controls" onSubmit={handleProjectionSubmit}>
-            <div className="form-field">
-              <label>
-                Saving years
-                <input
-                  inputMode="numeric"
-                  min="0"
-                  max="75"
-                  required
-                  value={projectionSavingYears}
-                  onChange={(event) => updateProjectionField('savingYears', event.target.value, setProjectionSavingYears)}
-                  aria-invalid={projectionFieldErrors.savingYears ? true : undefined}
-                  aria-describedby={projectionFieldErrors.savingYears ? 'saving-years-error' : undefined}
-                />
-              </label>
-              <FieldError id="saving-years-error" message={projectionFieldErrors.savingYears} />
-            </div>
-            <div className="form-field">
-              <label>
-                Drawdown years
-                <input
-                  inputMode="numeric"
-                  min="0"
-                  max="75"
-                  required
-                  value={projectionDrawdownYears}
-                  onChange={(event) => updateProjectionField('drawdownYears', event.target.value, setProjectionDrawdownYears)}
-                  aria-invalid={projectionFieldErrors.drawdownYears ? true : undefined}
-                  aria-describedby={projectionFieldErrors.drawdownYears ? 'drawdown-years-error' : undefined}
-                />
-              </label>
-              <FieldError id="drawdown-years-error" message={projectionFieldErrors.drawdownYears} />
-            </div>
-            <div className="form-field">
-              <label>
-                Annual withdrawal
-                <input
-                  inputMode="decimal"
-                  value={projectionAnnualWithdrawal}
-                  onChange={(event) => updateProjectionField('annualWithdrawal', event.target.value, setProjectionAnnualWithdrawal)}
-                  placeholder="60000.00"
-                  required
-                  aria-invalid={projectionFieldErrors.annualWithdrawal ? true : undefined}
-                  aria-describedby={
-                    projectionFieldErrors.annualWithdrawal ? 'annual-withdrawal-help annual-withdrawal-error' : 'annual-withdrawal-help'
-                  }
-                />
-              </label>
-              <span className="field-help" id="annual-withdrawal-help">
-                In today’s dollars; grows with inflation.
-              </span>
-              <FieldError id="annual-withdrawal-error" message={projectionFieldErrors.annualWithdrawal} />
-            </div>
-            <div className="form-field">
-              <label>
-                Inflation (%)
-                <input
-                  inputMode="decimal"
-                  value={projectionWithdrawalInflationRate}
-                  onChange={(event) =>
-                    updateProjectionField('withdrawalInflationRate', event.target.value, setProjectionWithdrawalInflationRate)
-                  }
-                  placeholder="3.00"
-                  required
-                  aria-invalid={projectionFieldErrors.withdrawalInflationRate ? true : undefined}
-                  aria-describedby={
-                    projectionFieldErrors.withdrawalInflationRate ? 'inflation-help withdrawal-inflation-error' : 'inflation-help'
-                  }
-                />
-              </label>
-              <span className="field-help" id="inflation-help">
-                Grows withdrawals each year, and contributions marked “grow with inflation”.
-              </span>
-              <FieldError id="withdrawal-inflation-error" message={projectionFieldErrors.withdrawalInflationRate} />
-            </div>
-            <button type="submit" disabled={isCalculatingProjection || items.length === 0}>
-              {isCalculatingProjection ? 'Calculating…' : 'Calculate projection'}
+        <div className="sidebar-actions">
+          <button type="button" className="ghost-button" onClick={() => void handleBackupExport()}>
+            Export JSON backup
+          </button>
+          <label className="ghost-button file-button">
+            Import JSON backup
+            <input type="file" accept="application/json,.json" onChange={(event) => void handleBackupImport(event)} />
+          </label>
+          {!isEphemeralSession ? (
+            <button type="button" className="ghost-button" onClick={() => void loadItems()}>
+              Refresh
             </button>
-          </form>
-
-          {items.length === 0 ? (
-            <p className="empty-state">Add financial items before calculating a repository-backed projection.</p>
           ) : null}
-          {projectionMessage ? <p className="status-message warning">{projectionMessage}</p> : null}
-
-          {projection && projectionItemsSignature !== null && signatureForProjection(items) !== projectionItemsSignature ? (
-            <p className="status-message warning">Your items changed since this projection. Recalculate to update.</p>
+          {isEphemeralSession ? (
+            <button type="button" className="ghost-button" onClick={handleClearSession}>
+              Clear session
+            </button>
           ) : null}
-          {projection ? <ProjectionResults projection={projection} /> : null}
-        </section>
-      </section>
-    </main>
-  )
-}
+        </div>
+      </aside>
 
-function ProjectionResults({ projection }: { projection: Projection }) {
-  const finalYear = projection.totals[projection.totals.length - 1]
-  const shortfallYears = projection.totals.filter((total) => (total.unfundedWithdrawalCents ?? 0) > 0)
-  const firstShortfallYear = shortfallYears[0]
-  const totalShortfallCents = shortfallYears.reduce((sum, total) => sum + (total.unfundedWithdrawalCents ?? 0), 0)
-  const hasDrawdown = projection.totals.some((total) => total.phase === 'drawdown')
-  const rows = projection.totals.flatMap((total) =>
-    projection.items.map((item, itemIndex) => ({
-      annualWithdrawalCents: total.withdrawalCents ?? 0,
-      combinedBalanceCents: total.balanceCents,
-      isFirstItemForYear: itemIndex === 0,
-      item,
-      shortfallCents: total.unfundedWithdrawalCents ?? 0,
-      yearlyBalance: item.yearlyBalances.find((yearlyBalance) => yearlyBalance.year === total.year),
-      year: total.year,
-    })),
-  )
+      <main className="workspace">
+        <form className="projection-controls" onSubmit={handleProjectionSubmit} aria-label="Projection settings">
+          <div className="form-field">
+            <label>
+              Saving years
+              <input
+                inputMode="numeric"
+                min="0"
+                max="75"
+                required
+                value={projectionSavingYears}
+                onChange={(event) => updateProjectionField('savingYears', event.target.value, setProjectionSavingYears)}
+                aria-invalid={projectionFieldErrors.savingYears ? true : undefined}
+                aria-describedby={projectionFieldErrors.savingYears ? 'saving-years-error' : undefined}
+              />
+            </label>
+            <FieldError id="saving-years-error" message={projectionFieldErrors.savingYears} />
+          </div>
+          <div className="form-field">
+            <label>
+              Drawdown years
+              <input
+                inputMode="numeric"
+                min="0"
+                max="75"
+                required
+                value={projectionDrawdownYears}
+                onChange={(event) => updateProjectionField('drawdownYears', event.target.value, setProjectionDrawdownYears)}
+                aria-invalid={projectionFieldErrors.drawdownYears ? true : undefined}
+                aria-describedby={projectionFieldErrors.drawdownYears ? 'drawdown-years-error' : undefined}
+              />
+            </label>
+            <FieldError id="drawdown-years-error" message={projectionFieldErrors.drawdownYears} />
+          </div>
+          <div className="form-field wide">
+            <label>
+              Annual withdrawal
+              <input
+                inputMode="decimal"
+                value={projectionAnnualWithdrawal}
+                onChange={(event) => updateProjectionField('annualWithdrawal', event.target.value, setProjectionAnnualWithdrawal)}
+                placeholder="60,000"
+                required
+                aria-invalid={projectionFieldErrors.annualWithdrawal ? true : undefined}
+                aria-describedby={
+                  projectionFieldErrors.annualWithdrawal ? 'annual-withdrawal-help annual-withdrawal-error' : 'annual-withdrawal-help'
+                }
+              />
+            </label>
+            <span className="field-help" id="annual-withdrawal-help">
+              In today’s dollars; grows with inflation.
+            </span>
+            <FieldError id="annual-withdrawal-error" message={projectionFieldErrors.annualWithdrawal} />
+          </div>
+          <div className="form-field wide">
+            <label>
+              Inflation (%)
+              <input
+                inputMode="decimal"
+                value={projectionWithdrawalInflationRate}
+                onChange={(event) =>
+                  updateProjectionField('withdrawalInflationRate', event.target.value, setProjectionWithdrawalInflationRate)
+                }
+                placeholder="3"
+                required
+                aria-invalid={projectionFieldErrors.withdrawalInflationRate ? true : undefined}
+                aria-describedby={
+                  projectionFieldErrors.withdrawalInflationRate ? 'inflation-help withdrawal-inflation-error' : 'inflation-help'
+                }
+              />
+            </label>
+            <span className="field-help" id="inflation-help">
+              Raises withdrawals and linked contributions each year.
+            </span>
+            <FieldError id="withdrawal-inflation-error" message={projectionFieldErrors.withdrawalInflationRate} />
+          </div>
+          <button type="submit" className="primary-button calculate-button" disabled={isCalculatingProjection || items.length === 0}>
+            {isCalculatingProjection ? 'Calculating…' : 'Calculate projection'}
+          </button>
+        </form>
 
-  return (
-    <div className="projection-results">
-      <div className="projection-summary-card">
-        <p className="eyebrow">Final projected total</p>
-        <p className="projection-total">{formatCurrency(finalYear.balanceCents, projection.currency)}</p>
-        <p>
-          Year {finalYear.year} with {formatCurrency(finalYear.contributionCents, projection.currency)} contributions,{' '}
-          {formatCurrency(finalYear.withdrawalCents ?? 0, projection.currency)} withdrawals, and{' '}
-          {formatCurrency(finalYear.growthCents, projection.currency)} growth in the final year.
-        </p>
-        {firstShortfallYear ? (
-          <p className="funding-status shortfall">
-            <span aria-hidden="true">⚠ </span>
-            <strong>Withdrawals run short starting in year {firstShortfallYear.year}</strong> (drawdown year{' '}
-            {firstShortfallYear.year - (projection.savingYears ?? 0)}).{' '}
-            {formatCurrency(totalShortfallCents, projection.currency)} of planned withdrawals can't be covered over the
-            projection.
-          </p>
-        ) : hasDrawdown ? (
-          <p className="funding-status funded">
-            <span aria-hidden="true">✓ </span>
-            All planned withdrawals are fully funded through year {finalYear.year}.
+        {errorMessage ? (
+          <p className="banner error" role="alert">
+            {errorMessage}
           </p>
         ) : null}
-      </div>
+        {projectionMessage ? <p className="banner warning">{projectionMessage}</p> : null}
+        {projectionIsStale ? (
+          <p className="banner warning">Your items changed since this projection. Recalculate to update.</p>
+        ) : null}
 
-      <div className="table-scroll">
-        <table>
-          <caption>Projection by year and item</caption>
-          <thead>
-            <tr>
-              <th scope="col">Year</th>
-              <th scope="col">Phase</th>
-              <th scope="col">Annual withdrawal</th>
-              {firstShortfallYear ? <th scope="col">Shortfall</th> : null}
-              <th scope="col">Item</th>
-              <th scope="col">Contribution</th>
-              <th scope="col">Withdrawal</th>
-              <th scope="col">Growth</th>
-              <th scope="col">Item balance</th>
-              <th scope="col">Combined balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ annualWithdrawalCents, combinedBalanceCents, isFirstItemForYear, item, shortfallCents, yearlyBalance, year }) => {
-              if (!yearlyBalance) {
-                return null
-              }
-
-              return (
-                <tr key={`${year}-${item.id || item.name}`} className={shortfallCents > 0 ? 'shortfall-row' : undefined}>
-                  <td>{isFirstItemForYear ? `Year ${year}` : ''}</td>
-                  <td>{isFirstItemForYear ? formatPhase(yearlyBalance.phase) : ''}</td>
-                  <td>{isFirstItemForYear ? formatCurrency(annualWithdrawalCents, projection.currency) : ''}</td>
-                  {firstShortfallYear ? (
-                    <td>{isFirstItemForYear ? formatCurrency(shortfallCents, projection.currency) : ''}</td>
-                  ) : null}
-                  <td>{item.name}</td>
-                  <td>{formatCurrency(yearlyBalance.contributionCents, projection.currency)}</td>
-                  <td>{formatCurrency(yearlyBalance.withdrawalCents ?? 0, projection.currency)}</td>
-                  <td>{formatCurrency(yearlyBalance.growthCents, projection.currency)}</td>
-                  <td>{formatCurrency(yearlyBalance.balanceCents, projection.currency)}</td>
-                  <td>{isFirstItemForYear ? formatCurrency(combinedBalanceCents, projection.currency) : ''}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+        {projection ? (
+          <div className={projectionIsStale ? 'results-frame stale' : 'results-frame'}>
+            <ProjectionResults projection={projection} colorFor={colorFor} />
+          </div>
+        ) : (
+          <section className="projection-empty" aria-label="No projection yet">
+            <h2>See how long your money lasts.</h2>
+            <p>
+              {items.length === 0
+                ? 'Add your accounts on the left, then set how many years you’ll save and draw down.'
+                : 'Set how many years you’ll save and draw down, then calculate your projection.'}
+            </p>
+          </section>
+        )}
+      </main>
     </div>
   )
 }
@@ -831,7 +812,7 @@ function backupItemsFromJSON(backup: FinancialItemsBackup) {
   const problems = backup.items.flatMap((item, index) => importedItemProblems(item, index))
   if (problems.length > 0) {
     const shown = problems.slice(0, 3).join(' ')
-    throw new Error(problems.length > 3 ? `${shown} (and ${problems.length - 3} more problems)` : shown)
+    throw new Error(problems.length > 3 ? `${shown} (and ${pluralize(problems.length - 3, 'more problem', 'more problems')})` : shown)
   }
 
   // Keep each ID the first time it appears. Missing or repeated IDs get new
@@ -958,12 +939,30 @@ function validateProjectionForm(
   const annualWithdrawalCents = parseHundredths(values.annualWithdrawal)
   const annualWithdrawalInflationRateBasisPoints = parseHundredths(values.withdrawalInflationRate)
 
-  if (savingYears === null) errors.savingYears = yearsError
-  if (drawdownYears === null) errors.drawdownYears = yearsError
-  if (annualWithdrawalCents === null) errors.annualWithdrawal = dollarAmountError
-  if (annualWithdrawalInflationRateBasisPoints === null) errors.withdrawalInflationRate = percentError
+  if (savingYears === null) errors.savingYears = projectionMessages.years
+  if (drawdownYears === null) errors.drawdownYears = projectionMessages.years
+  if (annualWithdrawalCents === null) errors.annualWithdrawal = projectionMessages.dollarAmount
+  if (annualWithdrawalInflationRateBasisPoints === null) errors.withdrawalInflationRate = projectionMessages.inflation
 
-  if (savingYears === null || drawdownYears === null || annualWithdrawalCents === null || annualWithdrawalInflationRateBasisPoints === null) {
+  // The same rules the projection API enforces, so they show up next to the
+  // field instead of as an API error.
+  if (savingYears !== null && drawdownYears !== null && savingYears + drawdownYears === 0) {
+    errors.drawdownYears = projectionMessages.noYears
+  }
+  if (drawdownYears !== null && drawdownYears > 0 && annualWithdrawalCents === 0) {
+    errors.annualWithdrawal = projectionMessages.withdrawalRequired
+  }
+  if (annualWithdrawalInflationRateBasisPoints !== null && annualWithdrawalInflationRateBasisPoints > maximumInflationPercent * 100) {
+    errors.withdrawalInflationRate = projectionMessages.inflationRange
+  }
+
+  if (
+    savingYears === null ||
+    drawdownYears === null ||
+    annualWithdrawalCents === null ||
+    annualWithdrawalInflationRateBasisPoints === null ||
+    Object.keys(errors).length > 0
+  ) {
     return { request: null, errors }
   }
 
@@ -1043,37 +1042,29 @@ function basisPointsToPercentInput(value: number) {
   return (value / 100).toFixed(2)
 }
 
-function formatCurrency(cents: number, currency: string) {
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-    }).format(cents / 100)
-  } catch {
-    // Intl throws on malformed currency codes; show plain text instead of
-    // crashing the page.
-    const amount = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100)
-    return `${amount} ${currency}`.trim()
+
+
+
+
+function describeGrowth(item: FinancialItem) {
+  const growth = `Grows ${formatRate(item.annualReturnRateBasisPoints)} a year`
+  if (
+    item.drawdownAnnualReturnRateBasisPoints === undefined ||
+    item.drawdownAnnualReturnRateBasisPoints === item.annualReturnRateBasisPoints
+  ) {
+    return `${growth}, the same in drawdown.`
   }
+  return `${growth}, ${formatRate(item.drawdownAnnualReturnRateBasisPoints)} in drawdown.`
 }
 
-function formatRate(basisPoints: number) {
-  return `${(basisPoints / 100).toFixed(2)}%`
-}
-
-function formatDrawdownReturn(item: FinancialItem) {
-  if (item.drawdownAnnualReturnRateBasisPoints === undefined) {
-    return `${formatRate(item.annualReturnRateBasisPoints)} drawdown return (uses annual return)`
+function describeContribution(item: FinancialItem) {
+  if (item.annualContributionCents <= 0) {
+    return 'No yearly contribution.'
   }
-
-  return `${formatRate(item.drawdownAnnualReturnRateBasisPoints)} drawdown return`
-}
-
-function formatPhase(phase: string | undefined) {
-  if (!phase) {
-    return ''
-  }
-  return phase.charAt(0).toUpperCase() + phase.slice(1)
+  const amount = formatWholeCurrency(item.annualContributionCents, item.currency)
+  return item.inflateAnnualContribution
+    ? `Adds ${amount} a year, rising with inflation.`
+    : `Adds ${amount} a year.`
 }
 
 function getErrorMessage(error: unknown) {

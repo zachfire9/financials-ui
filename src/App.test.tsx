@@ -173,7 +173,7 @@ describe('Financial items app', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /edit example brokerage/i }))
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Example browser-only account' } })
-    fireEvent.click(screen.getByRole('button', { name: /save item/i }))
+    fireEvent.click(screen.getByRole('button', { name: /save account/i }))
 
     expect(await screen.findByText('Example browser-only account')).toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
@@ -212,7 +212,7 @@ describe('Financial items app', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Edit Account D' }))
     expect(screen.getByLabelText(/name/i)).toHaveValue('Account D')
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Account D renamed' } })
-    fireEvent.click(screen.getByRole('button', { name: /save item/i }))
+    fireEvent.click(screen.getByRole('button', { name: /save account/i }))
 
     await screen.findByText('Account D renamed')
     expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
@@ -345,7 +345,7 @@ describe('Financial items app', () => {
     ]) {
       window.localStorage.setItem('financials.session.v1', saved)
       const view = render(<App />)
-      expect(screen.getByText(/no financial items yet/i)).toBeInTheDocument()
+      expect(screen.getByText(/no accounts yet/i)).toBeInTheDocument()
       expect(screen.queryByText(/restored/i)).not.toBeInTheDocument()
       view.unmount()
     }
@@ -407,7 +407,7 @@ describe('Financial items app', () => {
     await screen.findByText('Account B')
 
     fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
-    expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
+    await openYearlyTable()
     expect(screen.queryByText(/items changed since this projection/i)).not.toBeInTheDocument()
 
     // Reordering doesn't change the projection's inputs.
@@ -418,12 +418,51 @@ describe('Financial items app', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit Account A' }))
     fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '2000' } })
-    fireEvent.click(screen.getByRole('button', { name: /save item/i }))
+    fireEvent.click(screen.getByRole('button', { name: /save account/i }))
 
     expect(await screen.findByText('Your items changed since this projection. Recalculate to update.')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
     await waitFor(() => expect(screen.queryByText(/items changed since this projection/i)).not.toBeInTheDocument())
+  })
+
+  it('keeps each account’s chart color when another account is deleted', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+
+    render(<App />)
+    addSessionItem('Account A')
+    addSessionItem('Account B')
+    addSessionItem('Account C')
+    await screen.findByText('Account C')
+
+    const swatchColor = (name: string) =>
+      (screen.getByRole('heading', { level: 3, name }).closest('li')?.querySelector('.account-swatch') as HTMLElement).style.background
+    const before = { b: swatchColor('Account B'), c: swatchColor('Account C') }
+    expect(new Set([swatchColor('Account A'), before.b, before.c]).size).toBe(3)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Account A' }))
+    expect(swatchColor('Account B')).toBe(before.b)
+    expect(swatchColor('Account C')).toBe(before.c)
+
+    // A new account takes the freed color instead of repeating one in use.
+    addSessionItem('Account D')
+    await screen.findByText('Account D')
+    expect(new Set([swatchColor('Account B'), swatchColor('Account C'), swatchColor('Account D')]).size).toBe(3)
+  })
+
+  it('sends item IDs with ephemeral projections so charts can match account colors', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    const fetchMock = vi.fn().mockImplementation(async () => jsonResponse(exampleProjection))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    addSessionItem('Account A')
+    await screen.findByText('Account A')
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(requestBodyAt(fetchMock, 0).items).toEqual([expect.objectContaining({ id: 'session-item-1', name: 'Account A' })])
   })
 
   it('exports ephemeral browser-owned data without calling the backup API', async () => {
@@ -462,10 +501,9 @@ describe('Financial items app', () => {
     expect(screen.queryByText(/step 8: financial items crud/i)).not.toBeInTheDocument()
     expect(await screen.findByText('Example brokerage')).toBeInTheDocument()
     const itemCard = screen.getByRole('listitem')
-    expect(within(itemCard).getByText(/\$12,500\.00/)).toBeInTheDocument()
-    expect(within(itemCard).getByText(/7\.00% return/)).toBeInTheDocument()
-    expect(within(itemCard).getByText(/4\.00% drawdown return/)).toBeInTheDocument()
-    expect(within(itemCard).getByText(/contribution grows with inflation/i)).toBeInTheDocument()
+    expect(within(itemCard).getByText('$12,500')).toBeInTheDocument()
+    expect(within(itemCard).getByText('Grows 7% a year, 4% in drawdown.')).toBeInTheDocument()
+    expect(within(itemCard).getByText('Adds $3,000 a year, rising with inflation.')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/financial-items', undefined)
   })
 
@@ -501,7 +539,7 @@ describe('Financial items app', () => {
     fireEvent.change(screen.getByLabelText(/drawdown return \(%\)/i), { target: { value: '3.25' } })
     fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '1200.00' } })
     fireEvent.click(screen.getByLabelText(/grow this item.+contribution/i))
-    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add account/i }))
 
     await screen.findByText('Example emergency fund')
     expect(fetchMock).toHaveBeenLastCalledWith('/api/financial-items', {
@@ -536,7 +574,7 @@ describe('Financial items app', () => {
     fireEvent.change(screen.getByLabelText(/^annual return \(%\)$/i), { target: { value: '7%' } })
     fireEvent.change(screen.getByLabelText(/drawdown return \(%\)/i), { target: { value: '-2.5' } })
     fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '1.005' } })
-    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add account/i }))
 
     await screen.findByText('Example formatted input')
     expect(requestBodyAt(fetchMock, 1)).toMatchObject({
@@ -561,7 +599,7 @@ describe('Financial items app', () => {
     fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: 'abc' } })
     fireEvent.change(screen.getByLabelText(/^annual return \(%\)$/i), { target: { value: 'seven' } })
     fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '0' } })
-    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add account/i }))
 
     expect(await screen.findByText('Enter a dollar amount like 1,000 or 1000.50.')).toBeInTheDocument()
     expect(screen.getByText('Enter a percentage like 7 or -2.5.')).toBeInTheDocument()
@@ -574,7 +612,7 @@ describe('Financial items app', () => {
     expect(screen.getByText('Enter a percentage like 7 or -2.5.')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText(/^annual return \(%\)$/i), { target: { value: '7' } })
-    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add account/i }))
 
     await screen.findByText('Example fixed input')
     expect(requestBodyAt(fetchMock, 1)).toMatchObject({ amountCents: 250000, annualReturnRateBasisPoints: 700 })
@@ -621,7 +659,7 @@ describe('Financial items app', () => {
     fireEvent.change(screen.getByLabelText(/^currency$/i), { target: { value: 'us' } })
     fireEvent.change(screen.getByLabelText(/^annual return \(%\)$/i), { target: { value: '5' } })
     fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '0' } })
-    fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add account/i }))
 
     expect(await screen.findByText('Use a 3-letter currency code like USD.')).toBeInTheDocument()
     expect(screen.getByLabelText(/^currency$/i)).toHaveValue('US')
@@ -640,8 +678,50 @@ describe('Financial items app', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /calculate projection/i }))
 
-    expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
+    await openYearlyTable()
     expect(screen.getAllByText('3,389.56 U$').length).toBeGreaterThan(0)
+  })
+
+  it('asks for a withdrawal amount instead of sending drawdown years with no withdrawal', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse([exampleItem]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.change(await screen.findByLabelText(/drawdown years/i), { target: { value: '50' } })
+    fireEvent.change(screen.getByLabelText(/^annual withdrawal$/i), { target: { value: '0.00' } })
+    fireEvent.click(await screen.findByRole('button', { name: /calculate projection/i }))
+
+    expect(await screen.findByText('Enter how much to withdraw each year, or set drawdown years to 0.')).toBeInTheDocument()
+    expect(screen.getByLabelText(/^annual withdrawal$/i)).toHaveAttribute('aria-invalid', 'true')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    fireEvent.change(screen.getByLabelText(/saving years/i), { target: { value: '0' } })
+    fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+
+    expect(await screen.findByText('Add at least one saving or drawdown year.')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('explains projection errors from the API in plain language', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([exampleItem]))
+      .mockResolvedValueOnce(
+        jsonResponse({ error: 'invalid projection request: all items must use the same currency; annualWithdrawalCents is required when drawdownYears is greater than 0' }, 400),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /calculate projection/i }))
+
+    expect(
+      await screen.findByText('Couldn’t calculate the projection. All accounts need the same currency to be projected together.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Enter how much to withdraw each year, or set drawdown years to 0.')).toBeInTheDocument()
+    expect(screen.queryByText(/invalid projection request/i)).not.toBeInTheDocument()
   })
 
   it('updates and deletes existing financial items', async () => {
@@ -658,7 +738,7 @@ describe('Financial items app', () => {
     fireEvent.click(await screen.findByRole('button', { name: /edit example brokerage/i }))
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Example down payment' } })
     fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '15000.00' } })
-    fireEvent.click(screen.getByRole('button', { name: /save item/i }))
+    fireEvent.click(screen.getByRole('button', { name: /save account/i }))
 
     await screen.findByText('Example down payment')
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/financial-items/item_000001', expect.objectContaining({ method: 'PUT' }))
@@ -667,7 +747,7 @@ describe('Financial items app', () => {
 
     await waitFor(() => expect(screen.queryByText('Example down payment')).not.toBeInTheDocument())
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/financial-items/item_000001', { method: 'DELETE' })
-    expect(screen.getByText(/no financial items yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/no accounts yet/i)).toBeInTheDocument()
   })
 
   it('reorders existing items by dragging and dropping item cards', async () => {
@@ -747,13 +827,13 @@ describe('Financial items app', () => {
     fireEvent.change(screen.getByLabelText(/annual withdrawal/i), { target: { value: '60000.00' } })
     fireEvent.change(screen.getByLabelText(/^inflation \(%\)$/i), { target: { value: '3.00' } })
     expect(screen.getByLabelText(/^inflation \(%\)$/i)).toHaveAccessibleDescription(
-      'Grows withdrawals each year, and contributions marked “grow with inflation”.',
+      'Raises withdrawals and linked contributions each year.',
     )
     expect(screen.getByLabelText(/^annual withdrawal$/i)).toHaveAccessibleDescription('In today’s dollars; grows with inflation.')
     expect(screen.queryByLabelText(/grow contributions by withdrawal inflation/i)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
 
-    expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
+    await openYearlyTable()
     expect(screen.queryByText('Projection totals')).not.toBeInTheDocument()
     expect(screen.queryByText(/example brokerage ends at/i)).not.toBeInTheDocument()
     expect(screen.getByText(/all planned withdrawals are fully funded through year 3/i)).toBeInTheDocument()
@@ -816,7 +896,7 @@ describe('Financial items app', () => {
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: /calculate projection/i }))
-    expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
+    await openYearlyTable()
 
     const status = screen.getByText(/withdrawals run short starting in year 2/i).closest('p')
     expect(status).toHaveClass('funding-status', 'shortfall')
@@ -925,13 +1005,17 @@ describe('Financial items app', () => {
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: /calculate projection/i }))
-    expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
+    await openYearlyTable()
     expect(screen.queryByText(/fully funded|withdrawals run short/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: 'Shortfall' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
 
-    expect(await screen.findByText(/projection is updating/i)).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        'Couldn’t update the projection. Projection service unavailable. Showing your last projection until then.',
+      ),
+    ).toBeInTheDocument()
     expect(screen.getAllByText('$3,389.56').length).toBeGreaterThan(0)
   })
 })
@@ -943,12 +1027,17 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
+async function openYearlyTable() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Show yearly table' }))
+  expect(await screen.findByText('Projection by year and item')).toBeInTheDocument()
+}
+
 function addSessionItem(name: string) {
   fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: name } })
   fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '1000.00' } })
   fireEvent.change(screen.getByLabelText(/^annual return/i), { target: { value: '5.00' } })
   fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '0.00' } })
-  fireEvent.click(screen.getByRole('button', { name: /add item/i }))
+  fireEvent.click(screen.getByRole('button', { name: /add account/i }))
 }
 
 function stubBackupDownload() {

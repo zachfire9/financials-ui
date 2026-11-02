@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "exportedAt": "2026-11-02T00:00:00Z",
+  "items": [
+    {
+      "id": "session-item-1",
+      "name": "Valid brokerage",
+      "amountCents": 5000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 650,
+      "annualContributionCents": 500000,
+      "inflateAnnualContribution": false,
+      "sortOrder": 0,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "session-item-2",
+      "name": "Typo currency",
+      "amountCents": 2500000,
+      "currency": "US",
+      "annualReturnRateBasisPoints": 400,
+      "annualContributionCents": 0,
+      "inflateAnnualContribution": false,
+      "sortOrder": 1,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "session-item-3",
+      "name": "",
+      "amountCents": -100,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 700,
+      "annualContributionCents": "1200",
+      "inflateAnnualContribution": false,
+      "sortOrder": 2,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

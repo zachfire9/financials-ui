@@ -35,7 +35,7 @@ Then edit `.env` if your local API is not available at `http://localhost:8080`. 
 Session modes:
 
 - `VITE_FINANCIALS_SESSION_MODE=persistent` keeps the existing API-backed financial item CRUD workflow.
-- `VITE_FINANCIALS_SESSION_MODE=ephemeral` keeps imported JSON data in browser memory only. Create/edit/delete/reorder actions do not call the financial-items API, projections send the current items in the request body, and refreshing or closing the browser loses unsaved changes unless you export JSON again.
+- `VITE_FINANCIALS_SESSION_MODE=ephemeral` keeps accounts in the browser: they're saved to that browser's local storage until you click **Clear session**, and create/edit/delete/reorder actions don't call the financial-items API. Projections send the current accounts in the request body. Use Export JSON to back up or move to another device.
 
 Start the Financials API from the sibling `financials-api` repo in a separate terminal:
 
@@ -48,6 +48,16 @@ Start the UI dev server for same-machine browser testing:
 ```powershell
 npm run dev:local
 ```
+
+To run in ephemeral mode (what the deployed site uses) without editing `.env`, use:
+
+```powershell
+npm run dev:ephemeral
+```
+
+This loads the committed `.env.ephemeral` (Vite's "ephemeral" mode), which takes priority over your `.env`. The API still needs to be running for projections.
+
+Example backups for trying out features live in [`examples/`](examples/README.md). Import one, enter the projection settings listed there, and calculate.
 
 The local-only UI dev server listens on `http://127.0.0.1:5173` and includes a local proxy from `/api/*` to the Financials API target. Browser code calls `VITE_FINANCIALS_API_BASE_URL`, which defaults to `/api`; the dev server rewrites that to the local API during development.
 

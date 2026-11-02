@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "exportedAt": "2026-11-02T00:00:00Z",
+  "items": [
+    {
+      "id": "session-item-1",
+      "name": "Workplace 401(k)",
+      "amountCents": 1200000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 700,
+      "annualContributionCents": 900000,
+      "inflateAnnualContribution": true,
+      "sortOrder": 0,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "session-item-2",
+      "name": "Roth IRA",
+      "amountCents": 400000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 700,
+      "annualContributionCents": 650000,
+      "inflateAnnualContribution": false,
+      "sortOrder": 1,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "session-item-3",
+      "name": "High-yield savings",
+      "amountCents": 600000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 400,
+      "annualContributionCents": 240000,
+      "inflateAnnualContribution": false,
+      "sortOrder": 2,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}
