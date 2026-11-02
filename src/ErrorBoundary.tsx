@@ -27,17 +27,17 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     }
 
     return (
-      <main className="app-shell">
+      <main className="crash-screen">
         <section className="crash-panel" role="alert">
           <h2>Something went wrong</h2>
           <p>The page hit an unexpected error. Reloading usually fixes it.</p>
           <div className="form-actions">
-            <button type="button" onClick={() => window.location.reload()}>
+            <button type="button" className="primary-button" onClick={() => window.location.reload()}>
               Reload the page
             </button>
             <button
               type="button"
-              className="secondary"
+              className="disclosure"
               onClick={() => {
                 clearSavedSession()
                 window.location.reload()
