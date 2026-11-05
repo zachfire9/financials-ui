@@ -70,15 +70,11 @@ Trust policy shape:
 }
 ```
 
-The role needs enough permissions to sync static files and invalidate CloudFront:
+The trust policy and the role's permissions policy are kept as templates in [`infra/iam/`](../infra/iam/README.md), scoped to the frontend stack, bucket, distribution and certificate. Change them there in a PR, then apply them.
 
-- CloudFormation describe stack for the frontend stack outputs
-- S3 put/delete/list object permissions for the frontend bucket
-- CloudFront create invalidation for the frontend distribution
+Changes to `template.yaml` (for example the CloudFront security headers policy) only reach AWS on a run with `DEPLOY_FRONTEND_INFRA=true`. Optional parameters that aren't set as repo variables keep their previous stack values.
 
-If `DEPLOY_FRONTEND_INFRA=true`, the role also needs permissions to run `sam deploy` for the frontend stack, including CloudFormation stack updates, S3 bucket policy/resource updates, CloudFront distribution updates, ACM read access, and optional Route 53 record changes if `CUSTOM_DOMAIN_HOSTED_ZONE_ID` is supplied.
-
-Changes to `template.yaml` (for example the CloudFront security headers policy) only reach AWS on a run with `DEPLOY_FRONTEND_INFRA=true`. Optional parameters that aren't set as repo variables keep their previous stack values, so a one-off infra deploy doesn't remove an existing custom domain or certificate.
+The custom domain must come from the `CUSTOM_DOMAIN_NAME` and `CERTIFICATE_ARN` repo variables. A domain or certificate added to the distribution by hand in the console isn't part of the stack, so the next infra deploy removes it.
 
 ## Workflow behavior
 
