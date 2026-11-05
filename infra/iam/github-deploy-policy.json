@@ -1,0 +1,107 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadFrontendStack",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:GetTemplate",
+        "cloudformation:GetTemplateSummary"
+      ],
+      "Resource": "arn:aws:cloudformation:us-east-1:<aws-account-id>:stack/financials-ui/*"
+    },
+    {
+      "Sid": "DeployFrontendStackChangeSets",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:DeleteChangeSet"
+      ],
+      "Resource": [
+        "arn:aws:cloudformation:us-east-1:<aws-account-id>:stack/financials-ui/*",
+        "arn:aws:cloudformation:us-east-1:<aws-account-id>:changeSet/*/*",
+        "arn:aws:cloudformation:us-east-1:aws:transform/Serverless-2016-10-31"
+      ]
+    },
+    {
+      "Sid": "ValidateTemplatesNoResourceScopeAvailable",
+      "Effect": "Allow",
+      "Action": "cloudformation:ValidateTemplate",
+      "Resource": "*"
+    },
+    {
+      "Sid": "SyncFrontendBucketObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::financials-ui-frontendbucket-*/*"
+    },
+    {
+      "Sid": "ManageFrontendBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:CreateBucket",
+        "s3:GetBucketPolicy",
+        "s3:PutBucketPolicy",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketOwnershipControls",
+        "s3:PutEncryptionConfiguration"
+      ],
+      "Resource": "arn:aws:s3:::financials-ui-frontendbucket-*"
+    },
+    {
+      "Sid": "ManageFrontendDistribution",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:CreateInvalidation",
+        "cloudfront:GetDistribution",
+        "cloudfront:GetDistributionConfig",
+        "cloudfront:UpdateDistribution",
+        "cloudfront:DeleteDistribution",
+        "cloudfront:TagResource",
+        "cloudfront:UntagResource"
+      ],
+      "Resource": "arn:aws:cloudfront::<aws-account-id>:distribution/<distribution-id>"
+    },
+    {
+      "Sid": "ManageOriginAccessControls",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:GetOriginAccessControl",
+        "cloudfront:UpdateOriginAccessControl",
+        "cloudfront:DeleteOriginAccessControl"
+      ],
+      "Resource": "arn:aws:cloudfront::<aws-account-id>:origin-access-control/*"
+    },
+    {
+      "Sid": "CreateCloudFrontResourcesNoResourceScopeAvailable",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:CreateDistribution",
+        "cloudfront:CreateOriginAccessControl"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "UseFrontendCertificate",
+      "Effect": "Allow",
+      "Action": "acm:DescribeCertificate",
+      "Resource": "arn:aws:acm:us-east-1:<aws-account-id>:certificate/<certificate-id>"
+    },
+    {
+      "Sid": "ListCertificatesNoResourceScopeAvailable",
+      "Effect": "Allow",
+      "Action": "acm:ListCertificates",
+      "Resource": "*"
+    }
+  ]
+}
