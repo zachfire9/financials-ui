@@ -394,13 +394,26 @@ function App() {
     setErrorMessage(null)
     setStaleMessage(null)
 
+    // Only accounts whose position changed need saving.
+    const previousSortOrders = new Map(previousItems.map((item) => [item.id, item.sortOrder]))
+    const movedItems = nextItems.filter((item) => previousSortOrders.get(item.id) !== item.sortOrder)
+
     try {
-      for (const item of nextItems) {
+      for (const item of movedItems) {
         await updateFinancialItem(item.id, itemToPayload(item))
       }
     } catch (error) {
-      setItems(previousItems)
-      setErrorMessage(`Could not save the new item order. ${getErrorMessage(error)}`)
+      // Some updates may already be saved, so show the order the server
+      // actually has instead of guessing.
+      const reason = getErrorMessage(error)
+      try {
+        const savedItems = await listFinancialItems()
+        setItems(savedItems.sort(compareFinancialItems))
+        setErrorMessage(`Couldn’t save the new order. ${reason} Showing the order that’s saved.`)
+      } catch {
+        setItems(previousItems)
+        setErrorMessage(`Couldn’t save the new order. ${reason} Refresh to see the order that’s saved.`)
+      }
     }
   }
 
