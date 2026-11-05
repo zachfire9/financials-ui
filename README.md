@@ -1,18 +1,28 @@
 # Financials UI
 
-A local-first frontend for the Financials API. This repo has been reset from the old Django/Heroku prototype to a Vite + React + TypeScript app.
+A local-first frontend for the [Financials API](https://github.com/zachfire9/financials-api): a retirement planner that answers how long your money will actually last. It's a Vite + React + TypeScript app, live at [financials.zachfirestone.com](https://financials.zachfirestone.com).
 
 ## Current status
 
-- Runtime: Vite React single-page app
-- Current branch focus: deployed access control before real data
+- Runtime: Vite React single-page app, deployed to S3 + CloudFront in `ephemeral` session mode
 - Implemented workflows: financial-items CRUD, browser-owned ephemeral JSON sessions, JSON backup export/import, local proxy smoke testing, repository-backed or request-supplied saving/drawdown projection previews, placeholder-safe static deploy commands, SAM-managed S3/CloudFront frontend infrastructure, and optional deployed shared-token API access
-- Static hosting direction: S3/CloudFront first via `npm run build` output in `dist/`; Amplify Hosting remains a later migration option if its familiar GitHub-connected workflow becomes preferable
-- Later planned area: stronger identity/cloud persistence only if needed
+- Implemented views: projection headline and summary, balance-over-time chart (total or by account), money in/out chart, and a yearly table
+- Not planned unless needed: stronger identity/cloud persistence
+
+## Repository layout
+
+- `src/App.tsx`: accounts list and form, projection settings, session handling
+- `src/ProjectionResults.tsx`, `src/charts/`: projection headline, hand-built SVG charts, yearly table
+- `src/financialItemsApi.ts`: API client; `src/projectionErrors.ts`: plain-language error messages
+- `src/savedSession.ts`: browser `localStorage` persistence for ephemeral mode
+- `src/itemValidation.ts`, `src/numberInput.ts`, `src/format.ts`: form validation, number parsing and formatting
+- `examples/`: example backup files to import (validated by `src/examples.test.ts`)
+- `template.yaml`: SAM template for the S3 bucket, CloudFront distribution and security headers
+- `infra/iam/`: IAM policies for the GitHub Actions deploy role (see [infra/iam/README.md](infra/iam/README.md))
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 22 (what CI uses; Vite 7 needs at least 20.19)
 - npm 10+
 - Optional for AWS infrastructure deploys: AWS CLI and AWS SAM CLI
 
@@ -59,7 +69,7 @@ This loads the committed `.env.ephemeral` (Vite's "ephemeral" mode), which takes
 
 Example backups for trying out features live in [`examples/`](examples/README.md). Import one, enter the projection settings listed there, and calculate.
 
-The local-only UI dev server listens on `http://127.0.0.1:5173` and includes a local proxy from `/api/*` to the Financials API target. Browser code calls `VITE_FINANCIALS_API_BASE_URL`, which defaults to `/api`; the dev server rewrites that to the local API during development.
+`npm run dev` and `npm run dev:local` are the same: both listen only on this machine. The local-only UI dev server listens on `http://127.0.0.1:5173` and includes a local proxy from `/api/*` to the Financials API target. Browser code calls `VITE_FINANCIALS_API_BASE_URL`, which defaults to `/api`; the dev server rewrites that to the local API during development.
 
 ## Local network smoke test
 
@@ -102,30 +112,25 @@ Use this checklist when testing the UI from another device on the same private n
 
 This local network smoke test intentionally keeps browser API calls behind the Vite dev proxy. Static-hosting builds use `VITE_FINANCIALS_API_BASE_URL` directly instead.
 
-## Financial-items UI
+## Accounts
 
-The app can now exercise the existing `/financial-items` API contract:
+The accounts panel covers the `/financial-items` API contract (persistent mode) or the browser session (ephemeral mode):
 
-- List saved financial items
-- Create an example financial item
-- Edit an existing financial item with a full `PUT` payload
-- Delete an item
-- Export a JSON backup file for saved items or the current browser-owned session
-- Import a JSON backup file, replacing saved items in persistent mode or replacing the current browser session in ephemeral mode
-- Show loading, empty, validation/error, backup success, and stale-data states
+- Add, edit and delete accounts. Each has a current amount, annual return, optional drawdown return (blank reuses the annual return), annual contribution, and an option to grow the contribution with inflation.
+- Drag accounts to reorder them. In persistent mode only the moved accounts are saved; if a save fails partway, the list reloads the saved order.
+- Export a JSON backup of the current accounts, or import one to replace them.
+- Field-level validation, and plain-language messages for API and network errors.
 
-## Projection UI
+## Projections
 
-The app can also exercise the existing `POST /projections` API contract through the Vite `/api/*` proxy:
+The projection panel calls `POST /projections`:
 
-- Enter saving years, optional drawdown years, annual withdrawal, and annual withdrawal inflation assumptions.
-- Optionally grow saving-year annual contributions by the withdrawal inflation rate for the projection only; saved financial item contribution values are not changed.
-- Calculate from the current repository-backed financial items in persistent mode or from the current browser-owned imported items in ephemeral mode by sending `savingYears`, `drawdownYears`, `annualWithdrawalCents`, `annualWithdrawalInflationRateBasisPoints`, and, for ephemeral mode, request-supplied `items`.
-- Review a year-grouped table that lists each item with phase, annual withdrawal, contribution, withdrawal, growth, and item balance details while showing each year, annual withdrawal, and combined balance once per year.
-- Keep the aggregate final projected total visible above the table.
-- Keep the last successful projection visible if a recalculation fails transiently.
+- Enter saving years, drawdown years, the annual withdrawal (in today's dollars) and an inflation rate. Inflation grows the withdrawal each year, and the contributions of accounts that opt in.
+- Persistent mode projects the saved accounts; ephemeral mode sends the current accounts in the request body.
+- Results show a headline (how long the money lasts, or the shortfall), a balance-over-time chart (total or stacked by account, with the saving/drawdown phases marked), a money in/out chart (contributions, growth, withdrawals, shortfall), and an optional yearly table.
+- The last successful projection stays visible if a recalculation fails.
 
-This drawdown projection UI intentionally does not send hypothetical unsaved items, persist scenarios, choose item-specific drawdown return rates, configure withdrawal ordering, or add richer charts yet.
+Not supported yet: saved scenarios and a custom withdrawal order across accounts.
 
 Use fake/example data only while testing this public repo workflow. Real financial values belong in local/private runtime data, not committed docs or fixtures.
 
@@ -172,7 +177,7 @@ The deployed backend API must already exist from the sibling `financials-api` SA
 Suggested AWS shape:
 
 - A private S3 bucket stores the `dist/` files.
-- CloudFront serves the bucket over HTTPS.
+- CloudFront serves the bucket over HTTPS, with the AWS managed security headers policy (HSTS, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`).
 - CloudFront Origin Access Control allows CloudFront to read from the private bucket without making the bucket public.
 - SPA fallback maps CloudFront 403/404 responses to `index.html` so direct browser refreshes work.
 - Configure the API stack's CORS allowed origins with the CloudFront/static site origin, using deploy parameters instead of committed real values.
@@ -214,7 +219,7 @@ Key points:
 
 ### SAM-managed frontend infrastructure
 
-GitHub Actions deployment setup is documented in [GitHub Actions UI deploy](docs/github-actions-deploy.md). The workflow uses AWS OIDC and GitHub Secrets/Variables so deploy credentials and build-time tokens stay out of git.
+GitHub Actions deployment setup is documented in [GitHub Actions UI deploy](docs/github-actions-deploy.md). Every push to `master` builds, tests and syncs the site; with the `DEPLOY_FRONTEND_INFRA` repo variable set to `true`, it also runs `sam deploy` for this template. The workflow uses AWS OIDC and GitHub Secrets/Variables so deploy credentials and build-time tokens stay out of git. The manual steps below are for one-off or first-time setup.
 
 This repo includes `template.yaml` for creating the low-cost frontend hosting resources with SAM/CloudFormation. The template creates:
 
@@ -255,6 +260,8 @@ To manage a custom domain such as `financials.zachfirestone.com` through the fro
 sam deploy --profile zachfire9 --parameter-overrides PriceClass=PriceClass_100 CustomDomainName="<custom-domain>" CertificateArn="<us-east-1-acm-certificate-arn>" CustomDomainHostedZoneId="<route53-hosted-zone-id>"
 ```
 
+In the GitHub Actions workflow, the custom domain comes from the `CUSTOM_DOMAIN_NAME` and `CERTIFICATE_ARN` repo variables. Set it there or in the stack, never by hand in the CloudFront console: a domain added by hand isn't part of the stack, and the next infra deploy removes it.
+
 `CustomDomainHostedZoneId` is optional. If it is blank, the stack configures the CloudFront alias and certificate only; create the Route 53 A/AAAA alias records separately. If it is supplied, the stack creates A and AAAA alias records that point the custom domain at the CloudFront distribution. Keep certificate ARNs, hosted zone IDs, stack names, real deployed domains, API URLs, and tokens in ignored local config or private operator notes unless you intentionally decide they are public-safe.
 
 When serving the UI from a custom domain, update the sibling API stack's CORS parameter so `FinancialsAllowedOrigins` includes the custom origin, for example `https://<custom-domain>`. During migration you can include both the generated CloudFront URL and the custom domain as a comma-separated value.
@@ -285,6 +292,8 @@ Run unit tests:
 ```powershell
 npm test
 ```
+
+`src/docsPrivacy.test.ts` fails if a private IP address or LAN (mDNS) hostname appears in `README.md` or `.env.example`.
 
 Build the static app:
 
