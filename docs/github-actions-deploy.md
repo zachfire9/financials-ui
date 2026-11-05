@@ -78,6 +78,8 @@ The role needs enough permissions to sync static files and invalidate CloudFront
 
 If `DEPLOY_FRONTEND_INFRA=true`, the role also needs permissions to run `sam deploy` for the frontend stack, including CloudFormation stack updates, S3 bucket policy/resource updates, CloudFront distribution updates, ACM read access, and optional Route 53 record changes if `CUSTOM_DOMAIN_HOSTED_ZONE_ID` is supplied.
 
+Changes to `template.yaml` (for example the CloudFront security headers policy) only reach AWS on a run with `DEPLOY_FRONTEND_INFRA=true`. Optional parameters that aren't set as repo variables keep their previous stack values, so a one-off infra deploy doesn't remove an existing custom domain or certificate.
+
 ## Workflow behavior
 
 On `push` to `master`, and on manual `workflow_dispatch`, the workflow runs three separate jobs:

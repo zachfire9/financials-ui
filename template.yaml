@@ -130,6 +130,10 @@ Resources:
             - GET
             - HEAD
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          # AWS managed SecurityHeadersPolicy: adds Strict-Transport-Security,
+          # X-Frame-Options (SAMEORIGIN), X-Content-Type-Options (nosniff),
+          # Referrer-Policy (strict-origin-when-cross-origin) and X-XSS-Protection.
+          ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03
           Compress: true
         CustomErrorResponses:
           - ErrorCode: 403
