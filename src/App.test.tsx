@@ -752,12 +752,10 @@ describe('Financial items app', () => {
 
   it('reorders existing items by dragging and dropping item cards', async () => {
     const reorderedFirst = { ...secondItem, sortOrder: 0 }
-    const reorderedSecond = { ...exampleItem, sortOrder: 1 }
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse([exampleItem, secondItem]))
       .mockResolvedValueOnce(jsonResponse(reorderedFirst))
-      .mockResolvedValueOnce(jsonResponse(reorderedSecond))
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
@@ -768,7 +766,9 @@ describe('Financial items app', () => {
     fireEvent.dragOver(brokerage.closest('li')!)
     fireEvent.drop(brokerage.closest('li')!)
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    // Example brokerage already had position 1 and keeps it, so only the
+    // moved account is saved.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       '/api/financial-items/item_000002',
@@ -777,24 +777,83 @@ describe('Financial items app', () => {
         body: expect.stringContaining('"sortOrder":0'),
       }),
     )
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
-      '/api/financial-items/item_000001',
-      expect.objectContaining({
-        method: 'PUT',
-        body: expect.stringContaining('"sortOrder":1'),
-      }),
-    )
-    expect(requestBodyAt(fetchMock, 2)).toEqual({
-      name: 'Example brokerage',
-      amountCents: 1250000,
+    expect(requestBodyAt(fetchMock, 1)).toEqual({
+      name: 'Example savings',
+      amountCents: 1000000,
       currency: 'USD',
-      annualReturnRateBasisPoints: 700,
-      drawdownAnnualReturnRateBasisPoints: 400,
-      annualContributionCents: 300000,
-      inflateAnnualContribution: true,
-      sortOrder: 1,
+      annualReturnRateBasisPoints: 450,
+      annualContributionCents: 120000,
+      inflateAnnualContribution: false,
+      sortOrder: 0,
     })
+    expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
+      'Example savings',
+      'Example brokerage',
+    ])
+  })
+
+  it('saves only the accounts whose position changed when reordering', async () => {
+    const first = { ...exampleItem, id: 'item_000001', name: 'Account A', sortOrder: 0 }
+    const second = { ...secondItem, id: 'item_000002', name: 'Account B', sortOrder: 1 }
+    const third = { ...secondItem, id: 'item_000003', name: 'Account C', sortOrder: 2 }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([first, second, third]))
+      .mockImplementation(async (_url: string, init?: RequestInit) => jsonResponse(JSON.parse(String(init?.body ?? '{}'))))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    const accountB = await screen.findByText('Account B')
+    fireEvent.dragStart(screen.getByText('Account C').closest('li')!)
+    fireEvent.drop(accountB.closest('li')!)
+
+    // Account A keeps position 0, so only C (now 1) and B (now 2) are sent.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    expect(fetchMock.mock.calls.slice(1).map(([url]) => url)).toEqual([
+      '/api/financial-items/item_000003',
+      '/api/financial-items/item_000002',
+    ])
+    expect(requestBodyAt(fetchMock, 1)).toMatchObject({ name: 'Account C', sortOrder: 1 })
+    expect(requestBodyAt(fetchMock, 2)).toMatchObject({ name: 'Account B', sortOrder: 2 })
+    expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
+      'Account A',
+      'Account C',
+      'Account B',
+    ])
+  })
+
+  it('shows the saved order when a reorder fails partway', async () => {
+    const first = { ...exampleItem, id: 'item_000001', name: 'Account A', sortOrder: 0 }
+    const second = { ...secondItem, id: 'item_000002', name: 'Account B', sortOrder: 1 }
+    const third = { ...secondItem, id: 'item_000003', name: 'Account C', sortOrder: 2 }
+    // The server saved C at position 1 before the second update failed, so
+    // B and C now share position 1 there.
+    const savedOnServer = [first, { ...third, sortOrder: 1 }, second]
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([first, second, third]))
+      .mockResolvedValueOnce(jsonResponse({ ...third, sortOrder: 1 }))
+      .mockResolvedValueOnce(jsonResponse({ error: 'storage unavailable' }, 500))
+      .mockResolvedValueOnce(jsonResponse(savedOnServer))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    const accountB = await screen.findByText('Account B')
+    fireEvent.dragStart(screen.getByText('Account C').closest('li')!)
+    fireEvent.drop(accountB.closest('li')!)
+
+    expect(
+      await screen.findByText('Couldn’t save the new order. storage unavailable Showing the order that’s saved.'),
+    ).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/financial-items', undefined)
+    expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
+      'Account A',
+      'Account B',
+      'Account C',
+    ])
   })
 
   it('keeps the last successful list visible when a refresh fails', async () => {
