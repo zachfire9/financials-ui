@@ -46,4 +46,17 @@ describe('translateProjectionError', () => {
       'Something new went wrong.',
     ])
   })
+
+  it('puts household problems next to the matching person field', () => {
+    const result = translateProjectionError(
+      'invalid projection request: people[1].savingYears must be between 0 and 75; people[0].name is required; gapAnnualWithdrawalCents must be greater than or equal to 0; items[0].ownerId must match a person id',
+      ['Alex 401k'],
+    )
+    expect(result.fieldErrors).toEqual({
+      personYears1: 'Enter a whole number of years from 0 to 75.',
+      personName0: 'Enter a name.',
+      gapWithdrawal: 'Enter a dollar amount like 1,000 or 1000.50.',
+    })
+    expect(result.messages).toEqual(['“Alex 401k” has an invalid owner. Edit it in the accounts list.'])
+  })
 })

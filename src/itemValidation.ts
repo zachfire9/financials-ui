@@ -6,6 +6,7 @@ export const currencyCodePattern = /^[A-Z]{3}$/
 
 const minimumReturnRateBasisPoints = -10000
 const maximumReturnRateBasisPoints = 100000
+const maximumOwnerIDLength = 64
 
 // Checks one imported backup item against the same rules the API enforces, so
 // a hand-edited or corrupted file is rejected with a clear message instead of
@@ -49,6 +50,12 @@ export function importedItemProblems(item: unknown, index: number): string[] {
   }
   if (!isMissing('inflateAnnualContribution') && typeof value.inflateAnnualContribution !== 'boolean') {
     problems.push(`${label} inflateAnnualContribution must be true or false.`)
+  }
+  if (
+    !isMissing('ownerId') &&
+    (typeof value.ownerId !== 'string' || value.ownerId.length > maximumOwnerIDLength || value.ownerId.trim() !== value.ownerId)
+  ) {
+    problems.push(`${label} ownerId must be text of at most ${maximumOwnerIDLength} characters.`)
   }
 
   return problems

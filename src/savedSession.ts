@@ -4,6 +4,7 @@
 // data is corrupt, the app behaves as if nothing was saved.
 
 import type { FinancialItem } from './financialItemsApi'
+import type { PersonForm } from './household'
 import { importedItemProblems } from './itemValidation'
 
 export const savedSessionKey = 'financials.session.v1'
@@ -13,6 +14,10 @@ export type SavedProjectionForm = {
   drawdownYears: string
   annualWithdrawal: string
   withdrawalInflationRate: string
+  // Added with the household plan; sessions saved before it don't have them.
+  householdPlan?: boolean
+  people?: PersonForm[]
+  gapWithdrawal?: string
 }
 
 export type SavedSession = {
@@ -48,7 +53,15 @@ export function loadSavedSession(): SavedSession | null {
       typeof form.drawdownYears === 'string' &&
       typeof form.annualWithdrawal === 'string' &&
       typeof form.withdrawalInflationRate === 'string'
-        ? form
+        ? {
+            savingYears: form.savingYears,
+            drawdownYears: form.drawdownYears,
+            annualWithdrawal: form.annualWithdrawal,
+            withdrawalInflationRate: form.withdrawalInflationRate,
+            householdPlan: typeof form.householdPlan === 'boolean' ? form.householdPlan : undefined,
+            people: Array.isArray(form.people) ? form.people : undefined,
+            gapWithdrawal: typeof form.gapWithdrawal === 'string' ? form.gapWithdrawal : undefined,
+          }
         : null
     if (!projectionForm) {
       return null

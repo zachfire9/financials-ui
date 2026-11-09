@@ -1,7 +1,16 @@
 // Turns projection API errors into plain language. Problems that belong to a
 // projection setting become field errors; the rest become a short message.
 
-export type ProjectionField = 'savingYears' | 'drawdownYears' | 'annualWithdrawal' | 'withdrawalInflationRate'
+export type ProjectionField =
+  | 'savingYears'
+  | 'drawdownYears'
+  | 'annualWithdrawal'
+  | 'withdrawalInflationRate'
+  | 'gapWithdrawal'
+  | 'personName0'
+  | 'personYears0'
+  | 'personName1'
+  | 'personYears1'
 
 export const maximumProjectionYears = 75
 export const maximumInflationPercent = 1000
@@ -9,6 +18,7 @@ export const maximumInflationPercent = 1000
 export const projectionMessages = {
   years: `Enter a whole number of years from 0 to ${maximumProjectionYears}.`,
   noYears: 'Add at least one saving or drawdown year.',
+  personName: 'Enter a name.',
   withdrawalRequired: 'Enter how much to withdraw each year, or set drawdown years to 0.',
   dollarAmount: 'Enter a dollar amount like 1,000 or 1000.50.',
   inflation: 'Enter a percentage of 0 or more, like 3.',
@@ -23,6 +33,7 @@ const accountFieldNames: Record<string, string> = {
   drawdownAnnualReturnRateBasisPoints: 'drawdown return',
   annualContributionCents: 'annual contribution',
   sortOrder: 'position in the list',
+  ownerId: 'owner',
 }
 
 export type TranslatedProjectionError = {
@@ -46,11 +57,17 @@ export function translateProjectionError(message: string, accountNames: string[]
 
   for (const problem of message.slice(prefix.length).split('; ')) {
     const item = /^items\[(\d+)\]\.(\w+)/.exec(problem)
+    const person = /^people\[([01])\]\.(\w+)/.exec(problem)
     if (item) {
       const index = Number(item[1])
       const account = accountNames[index] ? `“${accountNames[index]}”` : `Account ${index + 1}`
       const field = accountFieldNames[item[2]] ?? item[2]
       result.messages.push(`${account} has an invalid ${field}. Edit it in the accounts list.`)
+    } else if (person && (person[2] === 'savingYears' || person[2] === 'name')) {
+      const field = (person[2] === 'name' ? `personName${person[1]}` : `personYears${person[1]}`) as ProjectionField
+      result.fieldErrors[field] = person[2] === 'name' ? projectionMessages.personName : projectionMessages.years
+    } else if (/^gapAnnualWithdrawalCents/.test(problem)) {
+      result.fieldErrors.gapWithdrawal = projectionMessages.dollarAmount
     } else if (/^savingYears must be between/.test(problem)) {
       result.fieldErrors.savingYears = projectionMessages.years
     } else if (/^drawdownYears must be between/.test(problem)) {
