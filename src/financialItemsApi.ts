@@ -7,6 +7,7 @@ export type FinancialItem = {
   drawdownAnnualReturnRateBasisPoints?: number
   annualContributionCents: number
   inflateAnnualContribution: boolean
+  ownerId?: string
   sortOrder: number
   createdAt: string
   updatedAt: string
@@ -20,6 +21,7 @@ export type FinancialItemPayload = {
   drawdownAnnualReturnRateBasisPoints?: number
   annualContributionCents: number
   inflateAnnualContribution: boolean
+  ownerId?: string
   sortOrder: number
 }
 
@@ -29,10 +31,12 @@ export type ProjectionRequest = {
   drawdownYears?: number
   annualWithdrawalCents?: number
   annualWithdrawalInflationRateBasisPoints?: number
+  people?: ProjectionPerson[]
+  gapAnnualWithdrawalCents?: number
   items?: Array<FinancialItemPayload & { id?: string }>
 }
 
-export type ProjectionPhase = 'starting' | 'saving' | 'drawdown'
+export type ProjectionPhase = 'starting' | 'saving' | 'transition' | 'drawdown'
 
 export type YearlyBalance = {
   year: number
@@ -52,12 +56,21 @@ export type ProjectedItem = {
   drawdownAnnualReturnRateBasisPoints?: number
   annualContributionCents: number
   inflateAnnualContribution: boolean
+  ownerId?: string
   yearlyBalances: YearlyBalance[]
+}
+
+// A household member with their own retirement year (years from today).
+export type ProjectionPerson = {
+  id: string
+  name: string
+  savingYears: number
 }
 
 export type Projection = {
   years: number
   savingYears?: number
+  transitionYears?: number
   drawdownYears?: number
   currency: string
   items: ProjectedItem[]

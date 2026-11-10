@@ -1,15 +1,18 @@
 import { useState } from 'react'
 import { BalanceChart } from './charts/BalanceChart'
 import { FlowsChart } from './charts/FlowsChart'
-import type { Projection } from './financialItemsApi'
+import type { Projection, ProjectionPerson } from './financialItemsApi'
 import { formatCompactCurrency, formatCurrency, pluralize } from './format'
+import { displayName, firstToRetire, lastToRetire } from './household'
 
 type ProjectionResultsProps = {
   projection: Projection
   colorFor: (itemId: string, index: number) => string
+  // The household people the projection was calculated with, if any.
+  people?: ProjectionPerson[] | null
 }
 
-export function ProjectionResults({ projection, colorFor }: ProjectionResultsProps) {
+export function ProjectionResults({ projection, colorFor, people = null }: ProjectionResultsProps) {
   const [showTable, setShowTable] = useState(false)
   const totals = projection.totals
   const startYear = totals[0]
@@ -17,16 +20,32 @@ export function ProjectionResults({ projection, colorFor }: ProjectionResultsPro
   const peakYear = totals.reduce((peak, total) => (total.balanceCents > peak.balanceCents ? total : peak), startYear)
   const savingYears = projection.savingYears ?? 0
   const drawdownYears = projection.drawdownYears ?? 0
+  const transitionYears = projection.transitionYears ?? 0
+  // Full withdrawals start after this year; it equals savingYears unless people
+  // retire at different times.
+  const bothRetiredAfter = savingYears + transitionYears
+  const stillWorking = people ? lastToRetire(people) : null
+  const retiredFirst = people ? firstToRetire(people) : null
+  const stillWorkingName = stillWorking ? displayName(stillWorking.name) : 'one of you'
   const shortfallYears = totals.filter((total) => (total.unfundedWithdrawalCents ?? 0) > 0)
   const firstShortfallYear = shortfallYears[0]
   const totalShortfallCents = shortfallYears.reduce((sum, total) => sum + (total.unfundedWithdrawalCents ?? 0), 0)
-  const hasDrawdown = totals.some((total) => total.phase === 'drawdown')
+  const hasWithdrawals = totals.some(
+    (total) => total.phase === 'drawdown' || (total.phase === 'transition' && (total.withdrawalCents ?? 0) > 0),
+  )
+  const shortfallWhileWorking = Boolean(firstShortfallYear) && transitionYears > 0 && firstShortfallYear.year <= bothRetiredAfter
   const currency = projection.currency
 
   return (
     <div className="projection-results">
       <section className="projection-summary" aria-label="Projection summary">
         <h2 className="projection-headline">{headline()}</h2>
+        {transitionYears > 0 && retiredFirst && stillWorking ? (
+          <p className="projection-timeline">
+            {displayName(retiredFirst.name)} retires after year {retiredFirst.savingYears} and {displayName(stillWorking.name)} after
+            year {stillWorking.savingYears}.
+          </p>
+        ) : null}
         <dl className="projection-facts">
           <div>
             <dt>Today</dt>
@@ -46,11 +65,13 @@ export function ProjectionResults({ projection, colorFor }: ProjectionResultsPro
         {firstShortfallYear ? (
           <p className="funding-status shortfall">
             <span aria-hidden="true">⚠ </span>
-            <strong>Withdrawals run short starting in year {firstShortfallYear.year}</strong> (drawdown year{' '}
-            {firstShortfallYear.year - savingYears}). {formatCurrency(totalShortfallCents, currency)} of planned withdrawals
-            can't be covered over the projection.
+            <strong>Withdrawals run short starting in year {firstShortfallYear.year}</strong> (
+            {shortfallWhileWorking
+              ? `while ${stillWorkingName} is still working`
+              : `drawdown year ${firstShortfallYear.year - bothRetiredAfter}`}
+            ). {formatCurrency(totalShortfallCents, currency)} of planned withdrawals can't be covered over the projection.
           </p>
-        ) : hasDrawdown ? (
+        ) : hasWithdrawals ? (
           <p className="funding-status funded">
             <span aria-hidden="true">✓ </span>
             All planned withdrawals are fully funded through year {finalYear.year}.
@@ -58,7 +79,7 @@ export function ProjectionResults({ projection, colorFor }: ProjectionResultsPro
         ) : null}
       </section>
 
-      <BalanceChart projection={projection} colorFor={colorFor} />
+      <BalanceChart projection={projection} colorFor={colorFor} stillWorkingName={stillWorking ? stillWorkingName : null} />
       <FlowsChart projection={projection} />
 
       <section className="yearly-table">
@@ -77,16 +98,29 @@ export function ProjectionResults({ projection, colorFor }: ProjectionResultsPro
   )
 
   function headline() {
+    const left = formatCompactCurrency(finalYear.balanceCents, currency)
+    const afterBoth = transitionYears > 0 ? ' after you’ve both retired' : ''
     if (firstShortfallYear) {
-      const coveredYears = Math.max(0, firstShortfallYear.year - savingYears - 1)
-      return coveredYears > 0
-        ? `Your money covers ${coveredYears} of ${pluralize(drawdownYears, 'year')} of withdrawals.`
+      if (shortfallWhileWorking) {
+        return `Your money runs short in year ${firstShortfallYear.year}, while ${stillWorkingName} is still working.`
+      }
+      const coveredYears = Math.max(0, firstShortfallYear.year - bothRetiredAfter - 1)
+      if (coveredYears > 0) {
+        return `Your money covers ${coveredYears} of ${pluralize(drawdownYears, 'year')} of withdrawals${afterBoth}.`
+      }
+      return transitionYears > 0
+        ? 'Your withdrawals run short in the first year after you’ve both retired.'
         : 'Your withdrawals run short in the first year of drawdown.'
     }
-    if (hasDrawdown) {
+    if (hasWithdrawals && drawdownYears > 0) {
+      if (transitionYears > 0) {
+        return drawdownYears === 1
+          ? `Your money lasts the full year after you’ve both retired, with ${left} left.`
+          : `Your money lasts all ${drawdownYears} years after you’ve both retired, with ${left} left.`
+      }
       return drawdownYears === 1
-        ? `Your money lasts the full year of drawdown, with ${formatCompactCurrency(finalYear.balanceCents, currency)} left.`
-        : `Your money lasts all ${drawdownYears} years, with ${formatCompactCurrency(finalYear.balanceCents, currency)} left.`
+        ? `Your money lasts the full year of drawdown, with ${left} left.`
+        : `Your money lasts all ${drawdownYears} years, with ${left} left.`
     }
     return `You'd have ${formatCompactCurrency(finalYear.balanceCents, currency)} after ${pluralize(finalYear.year, 'year')}.`
   }
@@ -155,9 +189,12 @@ function YearlyTable({ projection, hasShortfall }: { projection: Projection; has
   )
 }
 
-function formatPhase(phase: string | undefined) {
+export function formatPhase(phase: string | undefined) {
   if (!phase) {
     return ''
+  }
+  if (phase === 'transition') {
+    return 'One retired'
   }
   return phase.charAt(0).toUpperCase() + phase.slice(1)
 }

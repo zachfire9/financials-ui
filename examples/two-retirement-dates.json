@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "exportedAt": "2026-11-09T00:00:00Z",
+  "items": [
+    {
+      "id": "session-item-1",
+      "name": "Person 1 401(k)",
+      "amountCents": 18000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 700,
+      "annualContributionCents": 2300000,
+      "inflateAnnualContribution": true,
+      "sortOrder": 0,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "drawdownAnnualReturnRateBasisPoints": 500,
+      "ownerId": "person-1"
+    },
+    {
+      "id": "session-item-2",
+      "name": "Person 1 Roth IRA",
+      "amountCents": 6000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 700,
+      "annualContributionCents": 700000,
+      "inflateAnnualContribution": false,
+      "sortOrder": 1,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "drawdownAnnualReturnRateBasisPoints": 500,
+      "ownerId": "person-1"
+    },
+    {
+      "id": "session-item-3",
+      "name": "Person 2 401(k)",
+      "amountCents": 12000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 700,
+      "annualContributionCents": 1500000,
+      "inflateAnnualContribution": true,
+      "sortOrder": 2,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "drawdownAnnualReturnRateBasisPoints": 500,
+      "ownerId": "person-2"
+    },
+    {
+      "id": "session-item-4",
+      "name": "Person 2 IRA",
+      "amountCents": 3000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 700,
+      "annualContributionCents": 700000,
+      "inflateAnnualContribution": false,
+      "sortOrder": 3,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "drawdownAnnualReturnRateBasisPoints": 500,
+      "ownerId": "person-2"
+    },
+    {
+      "id": "session-item-5",
+      "name": "Joint brokerage",
+      "amountCents": 9000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 600,
+      "annualContributionCents": 1200000,
+      "inflateAnnualContribution": false,
+      "sortOrder": 4,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "drawdownAnnualReturnRateBasisPoints": 450
+    },
+    {
+      "id": "session-item-6",
+      "name": "Joint high-yield savings",
+      "amountCents": 4000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 400,
+      "annualContributionCents": 0,
+      "inflateAnnualContribution": false,
+      "sortOrder": 5,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

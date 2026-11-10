@@ -10,8 +10,10 @@ import {
   importFinancialItemsBackup,
   listFinancialItems,
   Projection,
+  ProjectionPerson,
   updateFinancialItem,
 } from './financialItemsApi'
+import { defaultGapWithdrawal, defaultPeople, displayName, ownerName, peopleFromSaved, type PersonForm } from './household'
 import { accountColors, otherAccountColor } from './charts/chartUtils'
 import { formatCurrency, formatRate, formatWholeCurrency, pluralize } from './format'
 import { parseHundredths, parseWholeNumber } from './numberInput'
@@ -34,6 +36,7 @@ const emptyForm = {
   drawdownAnnualReturnRate: '',
   annualContribution: '',
   inflateAnnualContribution: false,
+  owner: '',
 }
 
 type FormState = typeof emptyForm
@@ -74,7 +77,12 @@ function App() {
   const [projectionWithdrawalInflationRate, setProjectionWithdrawalInflationRate] = useState(
     restoredSession?.projectionForm.withdrawalInflationRate ?? defaultProjectionForm.withdrawalInflationRate,
   )
+  const [householdPlan, setHouseholdPlan] = useState(restoredSession?.projectionForm.householdPlan ?? false)
+  const [people, setPeople] = useState<PersonForm[]>(() => peopleFromSaved(restoredSession?.projectionForm.people))
+  const [gapWithdrawal, setGapWithdrawal] = useState(restoredSession?.projectionForm.gapWithdrawal ?? defaultGapWithdrawal)
   const [projection, setProjection] = useState<Projection | null>(null)
+  // The people a projection was calculated with, for labels in the results.
+  const [projectionPeople, setProjectionPeople] = useState<ProjectionPerson[] | null>(null)
   const [isCalculatingProjection, setIsCalculatingProjection] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [staleMessage, setStaleMessage] = useState<string | null>(null)
@@ -141,6 +149,9 @@ function App() {
         drawdownYears: projectionDrawdownYears,
         annualWithdrawal: projectionAnnualWithdrawal,
         withdrawalInflationRate: projectionWithdrawalInflationRate,
+        householdPlan,
+        people,
+        gapWithdrawal,
       },
       lastSessionItemNumber: Math.max(lastSessionItemNumber.current, highestSessionItemNumber(items)),
     })
@@ -151,6 +162,9 @@ function App() {
     projectionDrawdownYears,
     projectionAnnualWithdrawal,
     projectionWithdrawalInflationRate,
+    householdPlan,
+    people,
+    gapWithdrawal,
   ])
 
   useEffect(() => {
@@ -294,6 +308,12 @@ function App() {
     setProjectionFieldErrors((currentErrors) => withoutField(currentErrors, field))
   }
 
+  function updatePerson(index: number, field: 'name' | 'savingYears', value: string) {
+    setPeople((current) => current.map((person, personIndex) => (personIndex === index ? { ...person, [field]: value } : person)))
+    const errorField = (field === 'name' ? `personName${index}` : `personYears${index}`) as ProjectionField
+    setProjectionFieldErrors((currentErrors) => withoutField(currentErrors, errorField))
+  }
+
   function handleClearSession() {
     const confirmed = window.confirm(
       'Clear all items saved in this browser? This can’t be undone. Export a JSON backup first if you want to keep them.',
@@ -310,6 +330,10 @@ function App() {
     setProjectionDrawdownYears(defaultProjectionForm.drawdownYears)
     setProjectionAnnualWithdrawal(defaultProjectionForm.annualWithdrawal)
     setProjectionWithdrawalInflationRate(defaultProjectionForm.withdrawalInflationRate)
+    setHouseholdPlan(false)
+    setPeople(defaultPeople)
+    setGapWithdrawal(defaultGapWithdrawal)
+    setProjectionPeople(null)
     setProjectionFieldErrors({})
     setErrorMessage(null)
     resetForm()
@@ -347,6 +371,7 @@ function App() {
           : basisPointsToPercentInput(item.drawdownAnnualReturnRateBasisPoints),
       annualContribution: centsToDollarsInput(item.annualContributionCents),
       inflateAnnualContribution: item.inflateAnnualContribution,
+      owner: item.ownerId ?? '',
     })
   }
 
@@ -419,12 +444,16 @@ function App() {
 
   async function handleProjectionSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const { request: projectionInputs, errors } = validateProjectionForm({
-      savingYears: projectionSavingYears,
-      drawdownYears: projectionDrawdownYears,
-      annualWithdrawal: projectionAnnualWithdrawal,
-      withdrawalInflationRate: projectionWithdrawalInflationRate,
-    })
+    const { request: projectionInputs, errors } = validateProjectionForm(
+      {
+        savingYears: projectionSavingYears,
+        drawdownYears: projectionDrawdownYears,
+        annualWithdrawal: projectionAnnualWithdrawal,
+        withdrawalInflationRate: projectionWithdrawalInflationRate,
+        gapWithdrawal,
+      },
+      householdPlan ? people : null,
+    )
     setProjectionFieldErrors(errors)
     if (!projectionInputs) {
       return
@@ -442,6 +471,7 @@ function App() {
       const itemsSignature = signatureForProjection(items)
       const nextProjection = await calculateProjection(projectionRequest)
       setProjection(nextProjection)
+      setProjectionPeople(projectionInputs.people ?? null)
       setProjectionItemsSignature(itemsSignature)
     } catch (error) {
       const { fieldErrors, messages } = translateProjectionError(
@@ -527,6 +557,7 @@ function App() {
                   </div>
                   <p className="account-details">{describeGrowth(item)}</p>
                   <p className="account-details">{describeContribution(item)}</p>
+                  {householdPlan ? <p className="account-details account-owner">Owner: {ownerName(item.ownerId, people)}</p> : null}
                   <div className="item-actions">
                     <button type="button" className="text-button" aria-label={`Edit ${item.name}`} onClick={() => startEditing(item)}>
                       Edit
@@ -644,6 +675,24 @@ function App() {
             </label>
             <FieldError id="annual-contribution-error" message={itemFieldErrors.annualContribution} />
           </div>
+          {householdPlan ? (
+            <div className="form-field">
+              <label>
+                Owner
+                <select value={form.owner} onChange={(event) => setForm({ ...form, owner: event.target.value })} aria-describedby="owner-help">
+                  <option value="">Joint</option>
+                  {people.map((person) => (
+                    <option key={person.id} value={person.id}>
+                      {displayName(person.name)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span className="field-help" id="owner-help">
+                Contributions stop when the owner retires. Joint accounts contribute until you’ve both retired.
+              </span>
+            </div>
+          ) : null}
           <label className="checkbox-control">
             <input
               type="checkbox"
@@ -688,22 +737,81 @@ function App() {
 
       <main className="workspace">
         <form className="projection-controls" onSubmit={handleProjectionSubmit} aria-label="Projection settings">
-          <div className="form-field">
-            <label>
-              Saving years
-              <input
-                inputMode="numeric"
-                min="0"
-                max="75"
-                required
-                value={projectionSavingYears}
-                onChange={(event) => updateProjectionField('savingYears', event.target.value, setProjectionSavingYears)}
-                aria-invalid={projectionFieldErrors.savingYears ? true : undefined}
-                aria-describedby={projectionFieldErrors.savingYears ? 'saving-years-error' : undefined}
-              />
-            </label>
-            <FieldError id="saving-years-error" message={projectionFieldErrors.savingYears} />
-          </div>
+          <label className="checkbox-control household-toggle">
+            <input type="checkbox" checked={householdPlan} onChange={(event) => setHouseholdPlan(event.target.checked)} />
+            Two of us, retiring at different times
+          </label>
+          {householdPlan ? (
+            <>
+              {people.map((person, index) => (
+                <fieldset className="person-fields" key={person.id}>
+                  <legend className="visually-hidden">Person {index + 1}</legend>
+                  <div className="form-field">
+                    <label>
+                      Name
+                      <input
+                        value={person.name}
+                        onChange={(event) => updatePerson(index, 'name', event.target.value)}
+                        required
+                        aria-invalid={projectionFieldErrors[`personName${index}` as ProjectionField] ? true : undefined}
+                        aria-describedby={projectionFieldErrors[`personName${index}` as ProjectionField] ? `person-name-${index}-error` : undefined}
+                      />
+                    </label>
+                    <FieldError id={`person-name-${index}-error`} message={projectionFieldErrors[`personName${index}` as ProjectionField]} />
+                  </div>
+                  <div className="form-field">
+                    <label>
+                      Years until retiring
+                      <input
+                        inputMode="numeric"
+                        required
+                        value={person.savingYears}
+                        onChange={(event) => updatePerson(index, 'savingYears', event.target.value)}
+                        aria-invalid={projectionFieldErrors[`personYears${index}` as ProjectionField] ? true : undefined}
+                        aria-describedby={projectionFieldErrors[`personYears${index}` as ProjectionField] ? `person-years-${index}-error` : undefined}
+                      />
+                    </label>
+                    <FieldError id={`person-years-${index}-error`} message={projectionFieldErrors[`personYears${index}` as ProjectionField]} />
+                  </div>
+                </fieldset>
+              ))}
+              <div className="form-field wide">
+                <label>
+                  Withdrawal while one works
+                  <input
+                    inputMode="decimal"
+                    value={gapWithdrawal}
+                    onChange={(event) => updateProjectionField('gapWithdrawal', event.target.value, setGapWithdrawal)}
+                    placeholder="0"
+                    required
+                    aria-invalid={projectionFieldErrors.gapWithdrawal ? true : undefined}
+                    aria-describedby={projectionFieldErrors.gapWithdrawal ? 'gap-withdrawal-help gap-withdrawal-error' : 'gap-withdrawal-help'}
+                  />
+                </label>
+                <span className="field-help" id="gap-withdrawal-help">
+                  From your pooled money, each year after the first of you retires. Can be 0.
+                </span>
+                <FieldError id="gap-withdrawal-error" message={projectionFieldErrors.gapWithdrawal} />
+              </div>
+            </>
+          ) : (
+            <div className="form-field">
+              <label>
+                Saving years
+                <input
+                  inputMode="numeric"
+                  min="0"
+                  max="75"
+                  required
+                  value={projectionSavingYears}
+                  onChange={(event) => updateProjectionField('savingYears', event.target.value, setProjectionSavingYears)}
+                  aria-invalid={projectionFieldErrors.savingYears ? true : undefined}
+                  aria-describedby={projectionFieldErrors.savingYears ? 'saving-years-error' : undefined}
+                />
+              </label>
+              <FieldError id="saving-years-error" message={projectionFieldErrors.savingYears} />
+            </div>
+          )}
           <div className="form-field">
             <label>
               Drawdown years
@@ -715,9 +823,18 @@ function App() {
                 value={projectionDrawdownYears}
                 onChange={(event) => updateProjectionField('drawdownYears', event.target.value, setProjectionDrawdownYears)}
                 aria-invalid={projectionFieldErrors.drawdownYears ? true : undefined}
-                aria-describedby={projectionFieldErrors.drawdownYears ? 'drawdown-years-error' : undefined}
+                aria-describedby={
+                  householdPlan
+                    ? projectionFieldErrors.drawdownYears ? 'drawdown-years-help drawdown-years-error' : 'drawdown-years-help'
+                    : projectionFieldErrors.drawdownYears ? 'drawdown-years-error' : undefined
+                }
               />
             </label>
+            {householdPlan ? (
+              <span className="field-help" id="drawdown-years-help">
+                After you’ve both retired.
+              </span>
+            ) : null}
             <FieldError id="drawdown-years-error" message={projectionFieldErrors.drawdownYears} />
           </div>
           <div className="form-field wide">
@@ -736,7 +853,7 @@ function App() {
               />
             </label>
             <span className="field-help" id="annual-withdrawal-help">
-              In today’s dollars; grows with inflation.
+              {householdPlan ? 'Once you’ve both retired. In today’s dollars; grows with inflation.' : 'In today’s dollars; grows with inflation.'}
             </span>
             <FieldError id="annual-withdrawal-error" message={projectionFieldErrors.annualWithdrawal} />
           </div>
@@ -779,7 +896,7 @@ function App() {
 
         {projection ? (
           <div className={projectionIsStale ? 'results-frame stale' : 'results-frame'}>
-            <ProjectionResults projection={projection} colorFor={colorFor} />
+            <ProjectionResults projection={projection} colorFor={colorFor} people={projectionPeople} />
           </div>
         ) : (
           <section className="projection-empty" aria-label="No projection yet">
@@ -847,6 +964,7 @@ function backupItemsFromJSON(backup: FinancialItemsBackup) {
     })(),
     drawdownAnnualReturnRateBasisPoints: item.drawdownAnnualReturnRateBasisPoints ?? undefined,
     inflateAnnualContribution: item.inflateAnnualContribution ?? false,
+    ownerId: item.ownerId || undefined,
     sortOrder: item.sortOrder ?? index,
     createdAt: item.createdAt || new Date().toISOString(),
     updatedAt: item.updatedAt || new Date().toISOString(),
@@ -872,6 +990,7 @@ function localItemFromPayload(payload: FinancialItemPayload, id: string, created
     drawdownAnnualReturnRateBasisPoints: payload.drawdownAnnualReturnRateBasisPoints,
     annualContributionCents: payload.annualContributionCents,
     inflateAnnualContribution: payload.inflateAnnualContribution,
+    ownerId: payload.ownerId,
     sortOrder: payload.sortOrder,
     createdAt,
     updatedAt: now,
@@ -931,28 +1050,55 @@ function validateItemForm(
   if (drawdownAnnualReturnRateBasisPoints !== null) {
     payload.drawdownAnnualReturnRateBasisPoints = drawdownAnnualReturnRateBasisPoints
   }
+  if (form.owner !== '') {
+    payload.ownerId = form.owner
+  }
 
   return { payload, errors }
 }
 
 type ProjectionInputs = {
-  savingYears: number
+  savingYears?: number
   drawdownYears: number
   annualWithdrawalCents: number
   annualWithdrawalInflationRateBasisPoints: number
+  people?: ProjectionPerson[]
+  gapAnnualWithdrawalCents?: number
 }
 
+type ProjectionFormValues = {
+  savingYears: string
+  drawdownYears: string
+  annualWithdrawal: string
+  withdrawalInflationRate: string
+  gapWithdrawal: string
+}
+
+// Validates the settings. With household people, each person's years replace
+// the single saving years, and the gap withdrawal applies between retirements.
 function validateProjectionForm(
-  values: Record<ProjectionField, string>,
+  values: ProjectionFormValues,
+  people: PersonForm[] | null,
 ): { request: ProjectionInputs | null; errors: FieldErrors<ProjectionField> } {
   const errors: FieldErrors<ProjectionField> = {}
-  const savingYears = parseWholeNumber(values.savingYears, 0, maximumProjectionYears)
+  const personYears = (people ?? []).map((person) => parseWholeNumber(person.savingYears, 0, maximumProjectionYears))
+  ;(people ?? []).forEach((person, index) => {
+    if (person.name.trim() === '') errors[`personName${index}` as ProjectionField] = projectionMessages.personName
+    if (personYears[index] === null) errors[`personYears${index}` as ProjectionField] = projectionMessages.years
+  })
+  const gapAnnualWithdrawalCents = people ? parseHundredths(values.gapWithdrawal) : 0
+  if (gapAnnualWithdrawalCents === null) errors.gapWithdrawal = projectionMessages.dollarAmount
+  const savingYears = people
+    ? personYears.every((years) => years !== null)
+      ? Math.max(...(personYears as number[]))
+      : null
+    : parseWholeNumber(values.savingYears, 0, maximumProjectionYears)
   const drawdownYears =
     values.drawdownYears.trim() === '' ? 0 : parseWholeNumber(values.drawdownYears, 0, maximumProjectionYears)
   const annualWithdrawalCents = parseHundredths(values.annualWithdrawal)
   const annualWithdrawalInflationRateBasisPoints = parseHundredths(values.withdrawalInflationRate)
 
-  if (savingYears === null) errors.savingYears = projectionMessages.years
+  if (savingYears === null && !people) errors.savingYears = projectionMessages.years
   if (drawdownYears === null) errors.drawdownYears = projectionMessages.years
   if (annualWithdrawalCents === null) errors.annualWithdrawal = projectionMessages.dollarAmount
   if (annualWithdrawalInflationRateBasisPoints === null) errors.withdrawalInflationRate = projectionMessages.inflation
@@ -974,11 +1120,28 @@ function validateProjectionForm(
     drawdownYears === null ||
     annualWithdrawalCents === null ||
     annualWithdrawalInflationRateBasisPoints === null ||
+    gapAnnualWithdrawalCents === null ||
     Object.keys(errors).length > 0
   ) {
     return { request: null, errors }
   }
 
+  if (people) {
+    return {
+      request: {
+        drawdownYears,
+        annualWithdrawalCents,
+        annualWithdrawalInflationRateBasisPoints,
+        people: people.map((person, index) => ({
+          id: person.id,
+          name: person.name.trim(),
+          savingYears: personYears[index] as number,
+        })),
+        gapAnnualWithdrawalCents,
+      },
+      errors,
+    }
+  }
   return {
     request: { savingYears, drawdownYears, annualWithdrawalCents, annualWithdrawalInflationRateBasisPoints },
     errors,
@@ -1028,6 +1191,9 @@ function itemToPayload(item: FinancialItem): FinancialItemPayload {
 
   if (item.drawdownAnnualReturnRateBasisPoints !== undefined) {
     payload.drawdownAnnualReturnRateBasisPoints = item.drawdownAnnualReturnRateBasisPoints
+  }
+  if (item.ownerId) {
+    payload.ownerId = item.ownerId
   }
 
   return payload

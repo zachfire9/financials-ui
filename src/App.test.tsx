@@ -465,6 +465,89 @@ describe('Financial items app', () => {
     expect(requestBodyAt(fetchMock, 0).items).toEqual([expect.objectContaining({ id: 'session-item-1', name: 'Account A' })])
   })
 
+  it('plans for two people retiring at different times', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    const fetchMock = vi.fn().mockImplementation(async () => jsonResponse(exampleProjection))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    addSessionItem('Alex 401k')
+    addSessionItem('Joint brokerage')
+    await screen.findByText('Joint brokerage')
+    expect(screen.queryByLabelText('Owner')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Two of us, retiring at different times'))
+    expect(screen.queryByLabelText(/saving years/i)).not.toBeInTheDocument()
+    const first = screen.getByRole('group', { name: 'Person 1' })
+    const second = screen.getByRole('group', { name: 'Person 2' })
+    fireEvent.change(within(first).getByLabelText('Name'), { target: { value: 'Alex' } })
+    fireEvent.change(within(first).getByLabelText('Years until retiring'), { target: { value: '2' } })
+    fireEvent.change(within(second).getByLabelText('Name'), { target: { value: 'Sam' } })
+    fireEvent.change(within(second).getByLabelText('Years until retiring'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Withdrawal while one works'), { target: { value: '20,000' } })
+    fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText(/^annual withdrawal/i), { target: { value: '50,000' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Alex 401k' }))
+    fireEvent.change(screen.getByLabelText('Owner'), { target: { value: 'person-1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save account' }))
+    expect(await screen.findByText('Owner: Alex')).toBeInTheDocument()
+    expect(screen.getByText('Owner: Joint')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const body = requestBodyAt(fetchMock, 0)
+    expect(body).toEqual(
+      expect.objectContaining({
+        people: [
+          { id: 'person-1', name: 'Alex', savingYears: 2 },
+          { id: 'person-2', name: 'Sam', savingYears: 5 },
+        ],
+        gapAnnualWithdrawalCents: 2000000,
+        drawdownYears: 3,
+        annualWithdrawalCents: 5000000,
+      }),
+    )
+    expect(body.savingYears).toBeUndefined()
+    expect(body.items[0]).toEqual(expect.objectContaining({ name: 'Alex 401k', ownerId: 'person-1' }))
+    expect(body.items[1].ownerId).toBeUndefined()
+  })
+
+  it('remembers the household plan in this browser', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+
+    const firstVisit = render(<App />)
+    fireEvent.click(screen.getByLabelText('Two of us, retiring at different times'))
+    fireEvent.change(within(screen.getByRole('group', { name: 'Person 2' })).getByLabelText('Name'), { target: { value: 'Sam' } })
+    fireEvent.change(screen.getByLabelText('Withdrawal while one works'), { target: { value: '1,500' } })
+    firstVisit.unmount()
+
+    render(<App />)
+    expect(screen.getByLabelText('Two of us, retiring at different times')).toBeChecked()
+    expect(within(screen.getByRole('group', { name: 'Person 2' })).getByLabelText('Name')).toHaveValue('Sam')
+    expect(screen.getByLabelText('Withdrawal while one works')).toHaveValue('1,500')
+  })
+
+  it('checks each person’s settings before calculating', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    addSessionItem('Account A')
+    await screen.findByText('Account A')
+    fireEvent.click(screen.getByLabelText('Two of us, retiring at different times'))
+    const first = screen.getByRole('group', { name: 'Person 1' })
+    fireEvent.change(within(first).getByLabelText('Name'), { target: { value: ' ' } })
+    fireEvent.change(within(first).getByLabelText('Years until retiring'), { target: { value: '2.5' } })
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+
+    expect(await within(first).findByText('Enter a name.')).toBeInTheDocument()
+    expect(within(first).getByText('Enter a whole number of years from 0 to 75.')).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('exports ephemeral browser-owned data without calling the backup API', async () => {
     vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
     const createObjectURL = vi.fn().mockReturnValue('blob:financial-backup')

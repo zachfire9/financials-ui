@@ -234,6 +234,73 @@ describe('ProjectionResults', () => {
     expect(tooltip).toHaveTextContent('⚠ Shortfall$60')
   })
 
+  it('describes the years when one of you has retired and the other still works', () => {
+    const household = {
+      ...projectionWith(
+        [
+          {
+            id: 'a',
+            name: 'Brokerage',
+            balances: [
+              year(0, 'starting', 100000),
+              year(1, 'saving', 120000, { contributionCents: 20000 }),
+              year(2, 'transition', 125000, { contributionCents: 10000, withdrawalCents: 5000 }),
+              year(3, 'transition', 130000, { contributionCents: 10000, withdrawalCents: 5000 }),
+              year(4, 'drawdown', 110000, { withdrawalCents: 20000 }),
+            ],
+          },
+        ],
+        1,
+        1,
+      ),
+      transitionYears: 2,
+    }
+    const people = [
+      { id: 'person-1', name: 'Alex', savingYears: 1 },
+      { id: 'person-2', name: 'Sam', savingYears: 3 },
+    ]
+    const { container } = render(<ProjectionResults projection={household} colorFor={colorFor} people={people} />)
+
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Your money lasts the full year after you’ve both retired, with $1,100 left.')
+    expect(screen.getByText('Alex retires after year 1 and Sam after year 3.')).toBeInTheDocument()
+    expect(container.querySelector('.phase-marker text')).toHaveTextContent('Both retired after year 3')
+    expect(container.querySelector('.transition-band rect')).not.toBeNull()
+    expect(screen.getByText(/Shaded years: one of you has retired and Sam is still working\./)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show yearly table' }))
+    expect(within(screen.getByRole('table')).getAllByText('One retired')).toHaveLength(2)
+  })
+
+  it('says when the money runs short before you have both retired', () => {
+    const household = {
+      ...projectionWith(
+        [
+          {
+            id: 'a',
+            name: 'Savings',
+            balances: [
+              year(0, 'starting', 10000),
+              year(1, 'transition', 2000, { withdrawalCents: 8000 }),
+              year(2, 'transition', 0, { withdrawalCents: 2000, unfundedWithdrawalCents: 6000 }),
+              year(3, 'drawdown', 0, { unfundedWithdrawalCents: 9000 }),
+            ],
+          },
+        ],
+        0,
+        1,
+      ),
+      transitionYears: 2,
+    }
+    const people = [
+      { id: 'person-1', name: 'Alex', savingYears: 0 },
+      { id: 'person-2', name: 'Sam', savingYears: 2 },
+    ]
+    render(<ProjectionResults projection={household} colorFor={colorFor} people={people} />)
+
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Your money runs short in year 2, while Sam is still working.')
+    expect(screen.getByText(/while Sam is still working\)/)).toBeInTheDocument()
+  })
+
   it('keeps the yearly table one click away', () => {
     render(<ProjectionResults projection={fundedProjection} colorFor={colorFor} />)
     const toggle = screen.getByRole('button', { name: 'Show yearly table' })

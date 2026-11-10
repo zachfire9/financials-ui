@@ -8,12 +8,14 @@ type View = 'stacked' | 'lines'
 type BalanceChartProps = {
   projection: Projection
   colorFor: (itemId: string, index: number) => string
+  // Who is still working during the transition years, for the chart subtitle.
+  stillWorkingName?: string | null
 }
 
 const height = 340
 const margin = { top: 36, right: 20, bottom: 40, left: 68 }
 
-export function BalanceChart({ projection, colorFor }: BalanceChartProps) {
+export function BalanceChart({ projection, colorFor, stillWorkingName = null }: BalanceChartProps) {
   const [view, setView] = useState<View>('stacked')
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const [containerRef, width] = useElementWidth<HTMLDivElement>()
@@ -22,6 +24,10 @@ export function BalanceChart({ projection, colorFor }: BalanceChartProps) {
   const totals = projection.totals
   const lastYear = Math.max(1, totals[totals.length - 1]?.year ?? 1)
   const savingYears = projection.savingYears ?? 0
+  const transitionYears = projection.transitionYears ?? 0
+  // Full withdrawals start after this year. Between savingYears and here, one
+  // person has retired and the other is still working.
+  const bothRetiredAfter = savingYears + transitionYears
   const drawdownYears = projection.drawdownYears ?? 0
   const firstShortfall = totals.find((total) => (total.unfundedWithdrawalCents ?? 0) > 0)
 
@@ -106,9 +112,12 @@ export function BalanceChart({ projection, colorFor }: BalanceChartProps) {
   const charWidth = 7
   const labelGap = 8
   const shortfallLabelWidth = shortfallText.length * charWidth
-  const phaseText = compact ? 'Drawdown starts' : `Withdrawals start after year ${savingYears}`
+  const phaseText =
+    transitionYears > 0
+      ? compact ? 'Both retired' : `Both retired after year ${bothRetiredAfter}`
+      : compact ? 'Drawdown starts' : `Withdrawals start after year ${savingYears}`
   const phaseLabelWidth = phaseText.length * charWidth
-  const phaseX = x(savingYears)
+  const phaseX = x(bothRetiredAfter)
   const shortfallLabelStart = firstShortfall ? plotRight - shortfallLabelWidth : plotRight
   const phaseFitsRight = phaseX + labelGap + phaseLabelWidth <= plotRight
   const phaseFitsLeft = phaseX - labelGap - phaseLabelWidth >= labelGap
@@ -116,7 +125,7 @@ export function BalanceChart({ projection, colorFor }: BalanceChartProps) {
   const phaseLabelOnRight = phaseFitsRight && (phaseRightClearOfShortfall || !phaseFitsLeft)
   const labelRowY = margin.top - 16
   const shortfallOnSecondLine =
-    Boolean(firstShortfall) && savingYears > 0 && drawdownYears > 0 && phaseLabelOnRight && !phaseRightClearOfShortfall
+    Boolean(firstShortfall) && bothRetiredAfter > 0 && drawdownYears > 0 && phaseLabelOnRight && !phaseRightClearOfShortfall
   const shortfallLabelY = shortfallOnSecondLine ? margin.top + 16 : labelRowY
   const shortfallLabelX = shortfallOnSecondLine ? plotRight - 6 : plotRight
 
@@ -130,6 +139,9 @@ export function BalanceChart({ projection, colorFor }: BalanceChartProps) {
           <h3 id={titleId}>Balance over time</h3>
           <p className="chart-subtitle">
             {view === 'stacked' ? 'All accounts stacked into your total.' : 'Each account on its own line.'}
+            {transitionYears > 0
+              ? ` Shaded years: one of you has retired${stillWorkingName ? ` and ${stillWorkingName} is still working` : ''}.`
+              : ''}
           </p>
         </div>
         <div className="view-toggle" role="group" aria-label="Chart view">
@@ -204,7 +216,14 @@ export function BalanceChart({ projection, colorFor }: BalanceChartProps) {
                 ))}
           </g>
 
-          {savingYears > 0 && drawdownYears > 0 ? (
+          {transitionYears > 0 ? (
+            <g className="transition-band">
+              <rect x={x(savingYears)} y={margin.top} width={x(bothRetiredAfter) - x(savingYears)} height={plotBottom - margin.top} />
+              <line x1={x(savingYears)} x2={x(savingYears)} y1={margin.top} y2={plotBottom} />
+            </g>
+          ) : null}
+
+          {bothRetiredAfter > 0 && drawdownYears > 0 ? (
             <g className="phase-marker">
               <line x1={phaseX} x2={phaseX} y1={margin.top - 8} y2={plotBottom} />
               <text x={phaseX + (phaseLabelOnRight ? 8 : -8)} y={labelRowY} textAnchor={phaseLabelOnRight ? 'start' : 'end'}>
@@ -248,7 +267,15 @@ export function BalanceChart({ projection, colorFor }: BalanceChartProps) {
             <>
               <p className="tooltip-title">
                 Year {active.year}
-                <span>{active.phase === 'drawdown' ? 'Drawdown' : active.phase === 'saving' ? 'Saving' : 'Today'}</span>
+                <span>
+                  {active.phase === 'drawdown'
+                    ? 'Drawdown'
+                    : active.phase === 'transition'
+                      ? 'One retired'
+                      : active.phase === 'saving'
+                        ? 'Saving'
+                        : 'Today'}
+                </span>
               </p>
               <ul>
                 {[...series].reverse().map((entry) => (
