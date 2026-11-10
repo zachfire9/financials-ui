@@ -339,6 +339,16 @@ input[aria-invalid='true'] {
   max-width: 7rem;
 }
 
+/* "First / Normal / Last" is short; the availability choice can include a
+   name ("When Fran retires"), so it gets the rest of the row. */
+.form-row.withdrawal-row {
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+}
+
+.withdrawal-help {
+  margin-top: -0.25rem;
+}
+
 .form-row:has(.narrow) {
   grid-template-columns: minmax(0, 1fr) 7rem;
 }
@@ -1110,7 +1120,17 @@ td.num {
     grid-template-columns: 1fr;
   }
 
-  .form-row:has(.narrow) {
+  /* "First / Normal / Last" is short; the availability choice can include a
+   name ("When Fran retires"), so it gets the rest of the row. */
+.form-row.withdrawal-row {
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+}
+
+.withdrawal-help {
+  margin-top: -0.25rem;
+}
+
+.form-row:has(.narrow) {
     grid-template-columns: minmax(0, 1fr) 6rem;
   }
 

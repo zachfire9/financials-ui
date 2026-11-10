@@ -8,6 +8,8 @@ export type FinancialItem = {
   annualContributionCents: number
   inflateAnnualContribution: boolean
   ownerId?: string
+  withdrawalPriority?: number
+  withdrawalAvailableAfterYear?: number
   sortOrder: number
   createdAt: string
   updatedAt: string
@@ -22,6 +24,11 @@ export type FinancialItemPayload = {
   annualContributionCents: number
   inflateAnnualContribution: boolean
   ownerId?: string
+  // 1 = first, 2 (or omitted) = normal, 3 = last.
+  withdrawalPriority?: number
+  // Last year the account can't be withdrawn from. Omitted: when its owner
+  // retires (household plan) or anytime.
+  withdrawalAvailableAfterYear?: number
   sortOrder: number
 }
 
@@ -46,6 +53,8 @@ export type YearlyBalance = {
   withdrawalCents?: number
   growthCents: number
   unfundedWithdrawalCents?: number
+  // Balance in accounts that couldn't be withdrawn from that year.
+  lockedBalanceCents?: number
 }
 
 export type ProjectedItem = {

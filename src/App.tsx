@@ -37,11 +37,16 @@ const emptyForm = {
   annualContribution: '',
   inflateAnnualContribution: false,
   owner: '',
+  // '' = normal, '1' = first, '3' = last.
+  withdrawalPriority: '',
+  // '' = default (owner retires / anytime), 'now' = anytime, 'year' = after availableAfterYear.
+  availability: '' as '' | 'now' | 'year',
+  availableAfterYear: '',
 }
 
 type FormState = typeof emptyForm
 
-type ItemField = 'amount' | 'currency' | 'annualReturnRate' | 'drawdownAnnualReturnRate' | 'annualContribution'
+type ItemField = 'amount' | 'currency' | 'annualReturnRate' | 'drawdownAnnualReturnRate' | 'annualContribution' | 'availableAfterYear'
 type FieldErrors<Field extends string> = Partial<Record<Field, string>>
 
 const defaultProjectionForm = {
@@ -445,6 +450,13 @@ function App() {
       annualContribution: centsToDollarsInput(item.annualContributionCents),
       inflateAnnualContribution: item.inflateAnnualContribution,
       owner: item.ownerId ?? '',
+      withdrawalPriority: item.withdrawalPriority === 1 || item.withdrawalPriority === 3 ? String(item.withdrawalPriority) : '',
+      availability:
+        item.withdrawalAvailableAfterYear === undefined ? '' : item.withdrawalAvailableAfterYear === 0 ? 'now' : 'year',
+      availableAfterYear:
+        item.withdrawalAvailableAfterYear !== undefined && item.withdrawalAvailableAfterYear > 0
+          ? String(item.withdrawalAvailableAfterYear)
+          : '',
     })
   }
 
@@ -631,6 +643,9 @@ function App() {
                   <p className="account-details">{describeGrowth(item)}</p>
                   <p className="account-details">{describeContribution(item)}</p>
                   {householdPlan ? <p className="account-details account-owner">Owner: {ownerName(item.ownerId, people)}</p> : null}
+                  {describeWithdrawal(item, householdPlan ? people : null) ? (
+                    <p className="account-details">{describeWithdrawal(item, householdPlan ? people : null)}</p>
+                  ) : null}
                   <div className="item-actions">
                     <button type="button" className="text-button" aria-label={`Edit ${item.name}`} onClick={() => startEditing(item)}>
                       Edit
@@ -766,6 +781,56 @@ function App() {
               </span>
             </div>
           ) : null}
+          <div className="form-row withdrawal-row">
+            <div className="form-field">
+              <label>
+                Withdraw
+                <select value={form.withdrawalPriority} onChange={(event) => setForm({ ...form, withdrawalPriority: event.target.value })}>
+                  <option value="1">First</option>
+                  <option value="">Normal</option>
+                  <option value="3">Last</option>
+                </select>
+              </label>
+            </div>
+            <div className="form-field">
+              <label>
+                Available
+                <select
+                  value={form.availability}
+                  onChange={(event) => {
+                    setForm({ ...form, availability: event.target.value as FormState['availability'] })
+                    setItemFieldErrors((currentErrors) => withoutField(currentErrors, 'availableAfterYear'))
+                  }}
+                >
+                  <option value="">{defaultAvailabilityLabel(householdPlan ? form.owner : '', people)}</option>
+                  {householdPlan && form.owner ? <option value="now">Anytime</option> : null}
+                  <option value="year">After a set year</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          {form.availability === 'year' ? (
+            <div className="form-field">
+              <label>
+                Available after year
+                <input
+                  inputMode="numeric"
+                  value={form.availableAfterYear}
+                  onChange={(event) => updateItemField('availableAfterYear', event.target.value)}
+                  placeholder="10"
+                  aria-invalid={itemFieldErrors.availableAfterYear ? true : undefined}
+                  aria-describedby={itemFieldErrors.availableAfterYear ? 'available-after-year-help available-after-year-error' : 'available-after-year-help'}
+                />
+              </label>
+              <span className="field-help" id="available-after-year-help">
+                Withdrawals can start the year after.
+              </span>
+              <FieldError id="available-after-year-error" message={itemFieldErrors.availableAfterYear} />
+            </div>
+          ) : null}
+          <p className="field-help withdrawal-help">
+            Withdrawals come from “First” accounts before “Normal” ones, and from “Last” accounts only when the rest run out.
+          </p>
           <label className="checkbox-control">
             <input
               type="checkbox"
@@ -1041,6 +1106,8 @@ function localItemFromPayload(payload: FinancialItemPayload, id: string, created
     annualContributionCents: payload.annualContributionCents,
     inflateAnnualContribution: payload.inflateAnnualContribution,
     ownerId: payload.ownerId,
+    withdrawalPriority: payload.withdrawalPriority,
+    withdrawalAvailableAfterYear: payload.withdrawalAvailableAfterYear,
     sortOrder: payload.sortOrder,
     createdAt,
     updatedAt: now,
@@ -1083,6 +1150,8 @@ function validateItemForm(
   if (annualReturnRateBasisPoints === null) errors.annualReturnRate = signedPercentError
   if (hasDrawdownRate && drawdownAnnualReturnRateBasisPoints === null) errors.drawdownAnnualReturnRate = signedPercentError
   if (annualContributionCents === null) errors.annualContribution = dollarAmountError
+  const availableAfterYear = form.availability === 'year' ? parseWholeNumber(form.availableAfterYear, 0, 150) : null
+  if (form.availability === 'year' && availableAfterYear === null) errors.availableAfterYear = 'Enter a whole number of years from 0 to 150.'
 
   if (amountCents === null || annualReturnRateBasisPoints === null || annualContributionCents === null || Object.keys(errors).length > 0) {
     return { payload: null, errors }
@@ -1102,6 +1171,14 @@ function validateItemForm(
   }
   if (form.owner !== '') {
     payload.ownerId = form.owner
+  }
+  if (form.withdrawalPriority !== '') {
+    payload.withdrawalPriority = Number(form.withdrawalPriority)
+  }
+  if (form.availability === 'now') {
+    payload.withdrawalAvailableAfterYear = 0
+  } else if (form.availability === 'year' && availableAfterYear !== null) {
+    payload.withdrawalAvailableAfterYear = availableAfterYear
   }
 
   return { payload, errors }
@@ -1270,6 +1347,12 @@ function itemToPayload(item: FinancialItem): FinancialItemPayload {
   if (item.ownerId) {
     payload.ownerId = item.ownerId
   }
+  if (item.withdrawalPriority === 1 || item.withdrawalPriority === 3) {
+    payload.withdrawalPriority = item.withdrawalPriority
+  }
+  if (item.withdrawalAvailableAfterYear !== undefined) {
+    payload.withdrawalAvailableAfterYear = item.withdrawalAvailableAfterYear
+  }
 
   return payload
 }
@@ -1319,6 +1402,30 @@ function describeContribution(item: FinancialItem) {
   return item.inflateAnnualContribution
     ? `Adds ${amount} a year, rising with inflation.`
     : `Adds ${amount} a year.`
+}
+
+function defaultAvailabilityLabel(ownerId: string, people: PersonForm[]) {
+  const owner = ownerId ? people.find((person) => person.id === ownerId) : undefined
+  return owner ? `When ${displayName(owner.name)} retires` : 'Anytime'
+}
+
+// One line for the account card when its withdrawal settings aren't the
+// defaults, e.g. "Withdrawn first, available after year 5."
+function describeWithdrawal(item: FinancialItem, people: PersonForm[] | null) {
+  const parts: string[] = []
+  if (item.withdrawalPriority === 1) parts.push('withdrawn first')
+  if (item.withdrawalPriority === 3) parts.push('withdrawn last')
+  const owner = people && item.ownerId ? people.find((person) => person.id === item.ownerId) : undefined
+  if (item.withdrawalAvailableAfterYear !== undefined && item.withdrawalAvailableAfterYear > 0) {
+    parts.push(`available after year ${item.withdrawalAvailableAfterYear}`)
+  } else if (item.withdrawalAvailableAfterYear === 0 && owner) {
+    parts.push('available anytime')
+  } else if (item.withdrawalAvailableAfterYear === undefined && owner) {
+    parts.push(`available once ${displayName(owner.name)} retires`)
+  }
+  if (parts.length === 0) return ''
+  const sentence = parts.join(', ')
+  return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`
 }
 
 function getErrorMessage(error: unknown) {

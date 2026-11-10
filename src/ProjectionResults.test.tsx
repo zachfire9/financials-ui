@@ -4,7 +4,7 @@ import '@testing-library/jest-dom/vitest'
 import { ProjectionResults } from './ProjectionResults'
 import type { Projection, YearlyBalance } from './financialItemsApi'
 
-type Flow = Partial<Pick<YearlyBalance, 'contributionCents' | 'withdrawalCents' | 'growthCents' | 'unfundedWithdrawalCents'>>
+type Flow = Partial<Pick<YearlyBalance, 'contributionCents' | 'withdrawalCents' | 'growthCents' | 'unfundedWithdrawalCents' | 'lockedBalanceCents'>>
 
 function year(yearNumber: number, phase: YearlyBalance['phase'], balanceCents: number, flow: Flow = {}): YearlyBalance {
   return {
@@ -15,6 +15,7 @@ function year(yearNumber: number, phase: YearlyBalance['phase'], balanceCents: n
     withdrawalCents: flow.withdrawalCents ?? 0,
     growthCents: flow.growthCents ?? 0,
     unfundedWithdrawalCents: flow.unfundedWithdrawalCents ?? 0,
+    ...(flow.lockedBalanceCents ? { lockedBalanceCents: flow.lockedBalanceCents } : {}),
   }
 }
 
@@ -29,6 +30,7 @@ function projectionWith(items: Array<{ id: string; name: string; balances: Yearl
       withdrawalCents: entries.reduce((sum, entry) => sum + (entry.withdrawalCents ?? 0), 0),
       growthCents: entries.reduce((sum, entry) => sum + entry.growthCents, 0),
       unfundedWithdrawalCents: entries.reduce((sum, entry) => sum + (entry.unfundedWithdrawalCents ?? 0), 0),
+      lockedBalanceCents: entries.reduce((sum, entry) => sum + (entry.lockedBalanceCents ?? 0), 0),
     }
   })
   return {
@@ -299,6 +301,28 @@ describe('ProjectionResults', () => {
 
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Your money runs short in year 2, while Sam is still working.')
     expect(screen.getByText(/while Sam is still working\)/)).toBeInTheDocument()
+  })
+
+  it('mentions money that was still locked away when the plan ran short', () => {
+    const locked = projectionWith(
+      [
+        {
+          id: 'a',
+          name: 'Brokerage',
+          balances: [year(0, 'starting', 600), year(1, 'drawdown', 0, { withdrawalCents: 600, unfundedWithdrawalCents: 400 })],
+        },
+        {
+          id: 'b',
+          name: '401k',
+          balances: [year(0, 'starting', 500000), year(1, 'drawdown', 500000, { lockedBalanceCents: 500000 })],
+        },
+      ],
+      0,
+      1,
+    )
+    render(<ProjectionResults projection={locked} colorFor={colorFor} />)
+
+    expect(screen.getByText(/That year, \$5,000\.00 was still in accounts you can’t withdraw from yet\./)).toBeInTheDocument()
   })
 
   it('keeps the yearly table one click away', () => {
