@@ -308,6 +308,79 @@ function App() {
     setProjectionFieldErrors((currentErrors) => withoutField(currentErrors, field))
   }
 
+  const householdTimeline = describeHouseholdTimeline(people)
+
+  // The drawdown fields, shared by both layouts with layout-specific labels.
+  function withdrawalFields(withdrawalLabel: string, yearsLabel: string) {
+    return (
+      <>
+        <div className="form-field">
+          <label>
+            {yearsLabel}
+            <input
+              inputMode="numeric"
+              min="0"
+              max="75"
+              required
+              value={projectionDrawdownYears}
+              onChange={(event) => updateProjectionField('drawdownYears', event.target.value, setProjectionDrawdownYears)}
+              aria-invalid={projectionFieldErrors.drawdownYears ? true : undefined}
+              aria-describedby={projectionFieldErrors.drawdownYears ? 'drawdown-years-error' : undefined}
+            />
+          </label>
+          <FieldError id="drawdown-years-error" message={projectionFieldErrors.drawdownYears} />
+        </div>
+        <div className="form-field wide">
+          <label>
+            {withdrawalLabel}
+            <input
+              inputMode="decimal"
+              value={projectionAnnualWithdrawal}
+              onChange={(event) => updateProjectionField('annualWithdrawal', event.target.value, setProjectionAnnualWithdrawal)}
+              placeholder="60,000"
+              required
+              aria-invalid={projectionFieldErrors.annualWithdrawal ? true : undefined}
+              aria-describedby={
+                projectionFieldErrors.annualWithdrawal ? 'annual-withdrawal-help annual-withdrawal-error' : 'annual-withdrawal-help'
+              }
+            />
+          </label>
+          <span className="field-help" id="annual-withdrawal-help">
+            In today’s dollars; grows with inflation.
+          </span>
+          <FieldError id="annual-withdrawal-error" message={projectionFieldErrors.annualWithdrawal} />
+        </div>
+      </>
+    )
+  }
+
+  const inflationField = (
+    <div className="form-field wide">
+      <label>
+        Inflation (%)
+        <input
+          inputMode="decimal"
+          value={projectionWithdrawalInflationRate}
+          onChange={(event) => updateProjectionField('withdrawalInflationRate', event.target.value, setProjectionWithdrawalInflationRate)}
+          placeholder="3"
+          required
+          aria-invalid={projectionFieldErrors.withdrawalInflationRate ? true : undefined}
+          aria-describedby={projectionFieldErrors.withdrawalInflationRate ? 'inflation-help withdrawal-inflation-error' : 'inflation-help'}
+        />
+      </label>
+      <span className="field-help" id="inflation-help">
+        Raises withdrawals and linked contributions each year.
+      </span>
+      <FieldError id="withdrawal-inflation-error" message={projectionFieldErrors.withdrawalInflationRate} />
+    </div>
+  )
+
+  const calculateButton = (
+    <button type="submit" className="primary-button calculate-button" disabled={isCalculatingProjection || items.length === 0}>
+      {isCalculatingProjection ? 'Calculating…' : 'Calculate projection'}
+    </button>
+  )
+
   function updatePerson(index: number, field: 'name' | 'savingYears', value: string) {
     setPeople((current) => current.map((person, personIndex) => (personIndex === index ? { ...person, [field]: value } : person)))
     const errorField = (field === 'name' ? `personName${index}` : `personYears${index}`) as ProjectionField
@@ -736,152 +809,129 @@ function App() {
       </aside>
 
       <main className="workspace">
-        <form className="projection-controls" onSubmit={handleProjectionSubmit} aria-label="Projection settings">
+        <form
+          className={householdPlan ? 'projection-controls household' : 'projection-controls'}
+          onSubmit={handleProjectionSubmit}
+          aria-label="Projection settings"
+        >
           <label className="checkbox-control household-toggle">
             <input type="checkbox" checked={householdPlan} onChange={(event) => setHouseholdPlan(event.target.checked)} />
             Two of us, retiring at different times
           </label>
           {householdPlan ? (
             <>
-              {people.map((person, index) => (
-                <fieldset className="person-fields" key={person.id}>
-                  <legend className="visually-hidden">Person {index + 1}</legend>
-                  <div className="form-field">
-                    <label>
-                      Name
-                      <input
-                        value={person.name}
-                        onChange={(event) => updatePerson(index, 'name', event.target.value)}
-                        required
-                        aria-invalid={projectionFieldErrors[`personName${index}` as ProjectionField] ? true : undefined}
-                        aria-describedby={projectionFieldErrors[`personName${index}` as ProjectionField] ? `person-name-${index}-error` : undefined}
-                      />
-                    </label>
-                    <FieldError id={`person-name-${index}-error`} message={projectionFieldErrors[`personName${index}` as ProjectionField]} />
+              <section className="settings-group" aria-labelledby="settings-retirement">
+                <div className="settings-group-intro">
+                  <h3 id="settings-retirement">Retirement</h3>
+                  <p>Each of you stops contributing to your own accounts when you retire.</p>
+                </div>
+                <div className="people-grid">
+                  <div className="people-row people-grid-heading" aria-hidden="true">
+                    <span>Name</span>
+                    <span>Years until retiring</span>
                   </div>
-                  <div className="form-field">
-                    <label>
-                      Years until retiring
-                      <input
-                        inputMode="numeric"
-                        required
-                        value={person.savingYears}
-                        onChange={(event) => updatePerson(index, 'savingYears', event.target.value)}
-                        aria-invalid={projectionFieldErrors[`personYears${index}` as ProjectionField] ? true : undefined}
-                        aria-describedby={projectionFieldErrors[`personYears${index}` as ProjectionField] ? `person-years-${index}-error` : undefined}
-                      />
-                    </label>
-                    <FieldError id={`person-years-${index}-error`} message={projectionFieldErrors[`personYears${index}` as ProjectionField]} />
-                  </div>
-                </fieldset>
-              ))}
-              <div className="form-field wide">
-                <label>
-                  Withdrawal while one works
-                  <input
-                    inputMode="decimal"
-                    value={gapWithdrawal}
-                    onChange={(event) => updateProjectionField('gapWithdrawal', event.target.value, setGapWithdrawal)}
-                    placeholder="0"
-                    required
-                    aria-invalid={projectionFieldErrors.gapWithdrawal ? true : undefined}
-                    aria-describedby={projectionFieldErrors.gapWithdrawal ? 'gap-withdrawal-help gap-withdrawal-error' : 'gap-withdrawal-help'}
-                  />
-                </label>
-                <span className="field-help" id="gap-withdrawal-help">
-                  From your pooled money, each year after the first of you retires. Can be 0.
-                </span>
-                <FieldError id="gap-withdrawal-error" message={projectionFieldErrors.gapWithdrawal} />
+                  {people.map((person, index) => (
+                    <fieldset className="person-fields" key={person.id}>
+                      <legend className="visually-hidden">Person {index + 1}</legend>
+                      <div className="form-field">
+                        <label>
+                          <span className="visually-hidden">Name</span>
+                          <input
+                            value={person.name}
+                            onChange={(event) => updatePerson(index, 'name', event.target.value)}
+                            required
+                            aria-invalid={projectionFieldErrors[`personName${index}` as ProjectionField] ? true : undefined}
+                            aria-describedby={projectionFieldErrors[`personName${index}` as ProjectionField] ? `person-name-${index}-error` : undefined}
+                          />
+                        </label>
+                        <FieldError id={`person-name-${index}-error`} message={projectionFieldErrors[`personName${index}` as ProjectionField]} />
+                      </div>
+                      <div className="form-field">
+                        <label>
+                          <span className="visually-hidden">Years until retiring</span>
+                          <input
+                            inputMode="numeric"
+                            required
+                            value={person.savingYears}
+                            onChange={(event) => updatePerson(index, 'savingYears', event.target.value)}
+                            aria-invalid={projectionFieldErrors[`personYears${index}` as ProjectionField] ? true : undefined}
+                            aria-describedby={projectionFieldErrors[`personYears${index}` as ProjectionField] ? `person-years-${index}-error` : undefined}
+                          />
+                        </label>
+                        <FieldError id={`person-years-${index}-error`} message={projectionFieldErrors[`personYears${index}` as ProjectionField]} />
+                      </div>
+                    </fieldset>
+                  ))}
+                </div>
+              </section>
+
+              <section className="settings-group" aria-labelledby="settings-gap">
+                <div className="settings-group-intro">
+                  <h3 id="settings-gap">While one of you still works</h3>
+                  <p id="gap-summary">{householdTimeline.gap}</p>
+                </div>
+                <div className="settings-group-fields">
+                  {householdTimeline.hasGap ? (
+                    <div className="form-field wide">
+                      <label>
+                        Withdrawal per year
+                        <input
+                          inputMode="decimal"
+                          value={gapWithdrawal}
+                          onChange={(event) => updateProjectionField('gapWithdrawal', event.target.value, setGapWithdrawal)}
+                          placeholder="0"
+                          required
+                          aria-invalid={projectionFieldErrors.gapWithdrawal ? true : undefined}
+                          aria-describedby={projectionFieldErrors.gapWithdrawal ? 'gap-withdrawal-help gap-withdrawal-error' : 'gap-withdrawal-help'}
+                        />
+                      </label>
+                      <span className="field-help" id="gap-withdrawal-help">
+                        From your pooled money, in today’s dollars. Use 0 if a salary covers your costs.
+                      </span>
+                      <FieldError id="gap-withdrawal-error" message={projectionFieldErrors.gapWithdrawal} />
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+
+              <section className="settings-group" aria-labelledby="settings-drawdown">
+                <div className="settings-group-intro">
+                  <h3 id="settings-drawdown">Once you’ve both retired</h3>
+                  <p>{householdTimeline.drawdown}</p>
+                </div>
+                <div className="settings-group-fields">
+                  {withdrawalFields('Withdrawal per year', 'For how many years')}
+                </div>
+              </section>
+
+              <div className="settings-footer">
+                {inflationField}
+                {calculateButton}
               </div>
             </>
           ) : (
-            <div className="form-field">
-              <label>
-                Saving years
-                <input
-                  inputMode="numeric"
-                  min="0"
-                  max="75"
-                  required
-                  value={projectionSavingYears}
-                  onChange={(event) => updateProjectionField('savingYears', event.target.value, setProjectionSavingYears)}
-                  aria-invalid={projectionFieldErrors.savingYears ? true : undefined}
-                  aria-describedby={projectionFieldErrors.savingYears ? 'saving-years-error' : undefined}
-                />
-              </label>
-              <FieldError id="saving-years-error" message={projectionFieldErrors.savingYears} />
-            </div>
+            <>
+              <div className="form-field">
+                <label>
+                  Saving years
+                  <input
+                    inputMode="numeric"
+                    min="0"
+                    max="75"
+                    required
+                    value={projectionSavingYears}
+                    onChange={(event) => updateProjectionField('savingYears', event.target.value, setProjectionSavingYears)}
+                    aria-invalid={projectionFieldErrors.savingYears ? true : undefined}
+                    aria-describedby={projectionFieldErrors.savingYears ? 'saving-years-error' : undefined}
+                  />
+                </label>
+                <FieldError id="saving-years-error" message={projectionFieldErrors.savingYears} />
+              </div>
+              {withdrawalFields('Annual withdrawal', 'Drawdown years')}
+              {inflationField}
+              {calculateButton}
+            </>
           )}
-          <div className="form-field">
-            <label>
-              Drawdown years
-              <input
-                inputMode="numeric"
-                min="0"
-                max="75"
-                required
-                value={projectionDrawdownYears}
-                onChange={(event) => updateProjectionField('drawdownYears', event.target.value, setProjectionDrawdownYears)}
-                aria-invalid={projectionFieldErrors.drawdownYears ? true : undefined}
-                aria-describedby={
-                  householdPlan
-                    ? projectionFieldErrors.drawdownYears ? 'drawdown-years-help drawdown-years-error' : 'drawdown-years-help'
-                    : projectionFieldErrors.drawdownYears ? 'drawdown-years-error' : undefined
-                }
-              />
-            </label>
-            {householdPlan ? (
-              <span className="field-help" id="drawdown-years-help">
-                After you’ve both retired.
-              </span>
-            ) : null}
-            <FieldError id="drawdown-years-error" message={projectionFieldErrors.drawdownYears} />
-          </div>
-          <div className="form-field wide">
-            <label>
-              Annual withdrawal
-              <input
-                inputMode="decimal"
-                value={projectionAnnualWithdrawal}
-                onChange={(event) => updateProjectionField('annualWithdrawal', event.target.value, setProjectionAnnualWithdrawal)}
-                placeholder="60,000"
-                required
-                aria-invalid={projectionFieldErrors.annualWithdrawal ? true : undefined}
-                aria-describedby={
-                  projectionFieldErrors.annualWithdrawal ? 'annual-withdrawal-help annual-withdrawal-error' : 'annual-withdrawal-help'
-                }
-              />
-            </label>
-            <span className="field-help" id="annual-withdrawal-help">
-              {householdPlan ? 'Once you’ve both retired. In today’s dollars; grows with inflation.' : 'In today’s dollars; grows with inflation.'}
-            </span>
-            <FieldError id="annual-withdrawal-error" message={projectionFieldErrors.annualWithdrawal} />
-          </div>
-          <div className="form-field wide">
-            <label>
-              Inflation (%)
-              <input
-                inputMode="decimal"
-                value={projectionWithdrawalInflationRate}
-                onChange={(event) =>
-                  updateProjectionField('withdrawalInflationRate', event.target.value, setProjectionWithdrawalInflationRate)
-                }
-                placeholder="3"
-                required
-                aria-invalid={projectionFieldErrors.withdrawalInflationRate ? true : undefined}
-                aria-describedby={
-                  projectionFieldErrors.withdrawalInflationRate ? 'inflation-help withdrawal-inflation-error' : 'inflation-help'
-                }
-              />
-            </label>
-            <span className="field-help" id="inflation-help">
-              Raises withdrawals and linked contributions each year.
-            </span>
-            <FieldError id="withdrawal-inflation-error" message={projectionFieldErrors.withdrawalInflationRate} />
-          </div>
-          <button type="submit" className="primary-button calculate-button" disabled={isCalculatingProjection || items.length === 0}>
-            {isCalculatingProjection ? 'Calculating…' : 'Calculate projection'}
-          </button>
         </form>
 
         {errorMessage ? (
@@ -1055,6 +1105,31 @@ function validateItemForm(
   }
 
   return { payload, errors }
+}
+
+// Plain-language description of the household timeline, from the settings as
+// typed. Falls back to general wording while the years aren't valid yet.
+function describeHouseholdTimeline(people: PersonForm[]) {
+  const years = people.map((person) => parseWholeNumber(person.savingYears, 0, maximumProjectionYears))
+  if (years.some((value) => value === null)) {
+    return {
+      hasGap: true,
+      gap: 'The years after the first of you retires and before the other does.',
+      drawdown: 'Withdrawals for the rest of retirement.',
+    }
+  }
+  const sorted = people
+    .map((person, index) => ({ name: displayName(person.name), years: years[index] as number }))
+    .sort((left, right) => left.years - right.years)
+  const first = sorted[0]
+  const last = sorted[sorted.length - 1]
+  const bothRetiredAfter = last.years
+  const drawdown = `Starts in year ${bothRetiredAfter + 1}.`
+  if (first.years === last.years) {
+    return { hasGap: false, gap: `You both retire after year ${last.years}, so there are no years in between.`, drawdown }
+  }
+  const span = first.years + 1 === last.years ? `In year ${last.years}` : `In years ${first.years + 1}–${last.years}`
+  return { hasGap: true, gap: `${span}, ${first.name} is retired and ${last.name} is still working.`, drawdown }
 }
 
 type ProjectionInputs = {

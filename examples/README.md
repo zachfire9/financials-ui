@@ -15,7 +15,7 @@ Backups don't store projection settings, so enter them by hand.
 | `missing-and-duplicate-ids.json` | Import repair: one account has no ID and one repeats another's ID. Both get fresh IDs on import, so editing one never changes another. Ephemeral mode only; the API's backup import requires valid, unique IDs. | any | any | any | any |
 | `invalid/invalid-items.json` | Import validation: a bad currency code, a blank name, a negative amount and a contribution stored as text. The import is rejected with messages naming each item and field, and your current accounts stay as they were. | – | – | – | – |
 
-For `two-retirement-dates.json`, tick **Two of us, retiring at different times** and keep the default names: **Person 1**, 18 years until retiring; **Person 2**, 13 years; **Withdrawal while one works**, 30,000. The accounts are already tagged with their owners.
+For `two-retirement-dates.json`, tick **Two of us, retiring at different times** and keep the default names: **Person 1**, 18 years until retiring; **Person 2**, 13 years; under **While one of you still works**, a withdrawal of 30,000; under **Once you’ve both retired**, 30 years at 90,000. The accounts are already tagged with their owners.
 
 All files except `missing-and-duplicate-ids.json` and `invalid/` also import into the API-backed (persistent) mode.
 

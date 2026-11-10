@@ -484,9 +484,13 @@ describe('Financial items app', () => {
     fireEvent.change(within(first).getByLabelText('Years until retiring'), { target: { value: '2' } })
     fireEvent.change(within(second).getByLabelText('Name'), { target: { value: 'Sam' } })
     fireEvent.change(within(second).getByLabelText('Years until retiring'), { target: { value: '5' } })
-    fireEvent.change(screen.getByLabelText('Withdrawal while one works'), { target: { value: '20,000' } })
-    fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '3' } })
-    fireEvent.change(screen.getByLabelText(/^annual withdrawal/i), { target: { value: '50,000' } })
+    const gap = screen.getByRole('region', { name: 'While one of you still works' })
+    expect(gap).toHaveTextContent('In years 3–5, Alex is retired and Sam is still working.')
+    fireEvent.change(within(gap).getByLabelText('Withdrawal per year'), { target: { value: '20,000' } })
+    const retired = screen.getByRole('region', { name: 'Once you’ve both retired' })
+    expect(retired).toHaveTextContent('Starts in year 6.')
+    fireEvent.change(within(retired).getByLabelText('For how many years'), { target: { value: '3' } })
+    fireEvent.change(within(retired).getByLabelText('Withdrawal per year'), { target: { value: '50,000' } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit Alex 401k' }))
     fireEvent.change(screen.getByLabelText('Owner'), { target: { value: 'person-1' } })
@@ -520,13 +524,27 @@ describe('Financial items app', () => {
     const firstVisit = render(<App />)
     fireEvent.click(screen.getByLabelText('Two of us, retiring at different times'))
     fireEvent.change(within(screen.getByRole('group', { name: 'Person 2' })).getByLabelText('Name'), { target: { value: 'Sam' } })
-    fireEvent.change(screen.getByLabelText('Withdrawal while one works'), { target: { value: '1,500' } })
+    fireEvent.change(within(screen.getByRole('group', { name: 'Person 2' })).getByLabelText('Years until retiring'), { target: { value: '4' } })
+    fireEvent.change(within(screen.getByRole('region', { name: 'While one of you still works' })).getByLabelText('Withdrawal per year'), {
+      target: { value: '1,500' },
+    })
     firstVisit.unmount()
 
     render(<App />)
     expect(screen.getByLabelText('Two of us, retiring at different times')).toBeChecked()
     expect(within(screen.getByRole('group', { name: 'Person 2' })).getByLabelText('Name')).toHaveValue('Sam')
-    expect(screen.getByLabelText('Withdrawal while one works')).toHaveValue('1,500')
+    expect(within(screen.getByRole('region', { name: 'While one of you still works' })).getByLabelText('Withdrawal per year')).toHaveValue('1,500')
+  })
+
+  it('explains when both people retire in the same year', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+
+    render(<App />)
+    fireEvent.click(screen.getByLabelText('Two of us, retiring at different times'))
+    const gap = screen.getByRole('region', { name: 'While one of you still works' })
+    expect(gap).toHaveTextContent('You both retire after year 10, so there are no years in between.')
+    expect(within(gap).queryByLabelText('Withdrawal per year')).not.toBeInTheDocument()
   })
 
   it('checks each person’s settings before calculating', async () => {
