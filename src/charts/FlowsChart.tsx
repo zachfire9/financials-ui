@@ -22,6 +22,8 @@ type YearFlows = {
   growth: number
   withdrawals: number
   shortfall: number
+  // Part of the year's planned withdrawal that pays the mortgage.
+  mortgage: number
 }
 
 export function FlowsChart({ projection }: { projection: Projection }) {
@@ -37,6 +39,7 @@ export function FlowsChart({ projection }: { projection: Projection }) {
       growth: total.growthCents,
       withdrawals: total.withdrawalCents ?? 0,
       shortfall: total.unfundedWithdrawalCents ?? 0,
+      mortgage: projection.spending?.find((entry) => entry.year === total.year)?.mortgagePaymentCents ?? 0,
     }))
   if (years.length === 0) {
     return null
@@ -219,6 +222,12 @@ export function FlowsChart({ projection }: { projection: Projection }) {
                     </li>
                   )
                 })}
+                {active.mortgage > 0 ? (
+                  <li className="tooltip-detail">
+                    <span className="tooltip-name">Of which mortgage</span>
+                    <strong>{formatCompactCurrency(active.mortgage, currency)}</strong>
+                  </li>
+                ) : null}
                 <li className="tooltip-total">
                   <span className="tooltip-name">Net change</span>
                   <strong>{formatCompactCurrency(active.contributions + active.growth - active.withdrawals, currency)}</strong>
