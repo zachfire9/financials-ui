@@ -1,5 +1,5 @@
 import type { ExpenseErrors, ExpenseField, ExpenseForm } from './expenses'
-import { maximumExpenses, totalExpensesCents } from './expenses'
+import { hasExpenseRanges, maximumExpenses, totalExpensesCents, totalExpensesForYearCents } from './expenses'
 import { formatCurrency } from './format'
 
 type ExpenseEditorProps = {
@@ -16,7 +16,7 @@ type ExpenseEditorProps = {
 }
 
 // A row per expense: name, yearly amount, an optional inflation rate of its
-// own and an optional "first N years of retirement".
+// own and an optional range of retirement years.
 export function ExpenseEditor({ expenses, errors, currency, inflationPlaceholder, onChange, onAdd, onRemove, mortgage = null }: ExpenseEditorProps) {
   return (
     <div className="expense-editor">
@@ -24,7 +24,7 @@ export function ExpenseEditor({ expenses, errors, currency, inflationPlaceholder
         <span>Expense</span>
         <span>Per year</span>
         <span>Inflation (%)</span>
-        <span>For the first</span>
+        <span>Years of retirement</span>
         <span />
       </div>
       {expenses.map((expense, index) => {
@@ -64,8 +64,9 @@ export function ExpenseEditor({ expenses, errors, currency, inflationPlaceholder
             {input('amount', `${label} per year`, { inputMode: 'decimal', placeholder: '0', shortLabel: 'Per year' })}
             {input('inflationRate', `${label} inflation (%)`, { inputMode: 'decimal', placeholder: inflationPlaceholder, shortLabel: 'Inflation (%)' })}
             <div className="expense-years">
-              {input('years', `${label}: number of years`, { inputMode: 'numeric', placeholder: 'All', shortLabel: 'For the first' })}
-              <span aria-hidden="true">years</span>
+              {input('fromYear', `${label}: first year of retirement`, { inputMode: 'numeric', placeholder: '1', shortLabel: 'Years' })}
+              <span aria-hidden="true">to</span>
+              {input('toYear', `${label}: last year of retirement`, { inputMode: 'numeric', placeholder: 'End', shortLabel: '\u00a0' })}
             </div>
             <button type="button" className="text-button" onClick={() => onRemove(expense.id)} aria-label={`Remove ${label}`}>
               Remove
@@ -84,13 +85,21 @@ export function ExpenseEditor({ expenses, errors, currency, inflationPlaceholder
         <button type="button" className="text-button" onClick={onAdd} disabled={expenses.length >= maximumExpenses}>
           Add expense
         </button>
-        <span className="expense-total">
-          Total: <strong>{formatCurrency(totalExpensesCents(expenses), currency)}</strong> a year in today’s dollars
-          {mortgage ? ', plus your mortgage' : ''}
-        </span>
+        {hasExpenseRanges(expenses) ? (
+          <span className="expense-total">
+            First year of retirement: <strong>{formatCurrency(totalExpensesForYearCents(expenses, 1), currency)}</strong> in today’s
+            dollars{mortgage ? ', plus your mortgage' : ''}. It changes as expenses start and stop.
+          </span>
+        ) : (
+          <span className="expense-total">
+            Total: <strong>{formatCurrency(totalExpensesCents(expenses), currency)}</strong> a year in today’s dollars
+            {mortgage ? ', plus your mortgage' : ''}
+          </span>
+        )}
       </div>
       <p className="field-help">
-        Leave inflation blank to use the plan’s rate, and years blank to include the expense every year of retirement.
+        Leave inflation blank to use the plan’s rate. Year 1 is your first year of retirement: leave the years blank for all of
+        retirement, or set a range, like 1 to 4 for health insurance before Medicare or 25 onward for long-term care.
         {mortgage ? ' Your mortgage payment is added automatically, so put only property tax, insurance and upkeep under Housing.' : ''}
       </p>
     </div>

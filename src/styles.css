@@ -681,7 +681,7 @@ input[aria-invalid='true'] {
   align-items: start;
   display: grid;
   gap: 0.6rem;
-  grid-template-columns: minmax(0, 14rem) minmax(0, 9rem) minmax(0, 6.5rem) minmax(0, 8rem) auto;
+  grid-template-columns: minmax(0, 13rem) minmax(0, 8.5rem) minmax(0, 6.5rem) minmax(0, 11rem) auto;
   margin-bottom: 0.5rem;
 }
 
@@ -700,6 +700,11 @@ input[aria-invalid='true'] {
   align-items: start;
   display: flex;
   gap: 0.4rem;
+}
+
+.expense-years > .expense-cell {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .expense-years > span {
