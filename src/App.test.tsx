@@ -668,6 +668,21 @@ describe('Financial items app', () => {
     ])
   })
 
+  it('shows the plan\u2019s last retirement year as the default end of a range', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+
+    render(<App />)
+    addSessionItem('Savings')
+    await screen.findByText('Savings')
+    fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '30' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Itemize expenses' }))
+
+    expect(screen.getByLabelText('Travel: last year of retirement')).toHaveAttribute('placeholder', '30')
+    fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '' } })
+    expect(screen.getByLabelText('Travel: last year of retirement')).not.toHaveAttribute('placeholder')
+  })
+
   it('checks each expense before calculating', async () => {
     vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
     const fetchMock = vi.fn()

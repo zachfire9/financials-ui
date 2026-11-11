@@ -7,6 +7,9 @@ type ExpenseEditorProps = {
   errors: ExpenseErrors
   currency: string
   inflationPlaceholder: string
+  // The plan's number of retirement years, shown as the default last year of
+  // a range. Null when it isn't a valid number yet (the box is left blank).
+  lastYear?: number | null
   onChange: (id: string, field: ExpenseField, value: string) => void
   onAdd: () => void
   onRemove: (id: string) => void
@@ -17,7 +20,19 @@ type ExpenseEditorProps = {
 
 // A row per expense: name, yearly amount, an optional inflation rate of its
 // own and an optional range of retirement years.
-export function ExpenseEditor({ expenses, errors, currency, inflationPlaceholder, onChange, onAdd, onRemove, mortgage = null }: ExpenseEditorProps) {
+export function ExpenseEditor({
+  expenses,
+  errors,
+  currency,
+  inflationPlaceholder,
+  lastYear = null,
+  onChange,
+  onAdd,
+  onRemove,
+  mortgage = null,
+}: ExpenseEditorProps) {
+  // Blank until the plan has a valid number of retirement years.
+  const lastYearPlaceholder = lastYear && lastYear > 0 ? String(lastYear) : undefined
   return (
     <div className="expense-editor">
       <div className="expense-row expense-headings" aria-hidden="true">
@@ -66,7 +81,7 @@ export function ExpenseEditor({ expenses, errors, currency, inflationPlaceholder
             <div className="expense-years">
               {input('fromYear', `${label}: first year of retirement`, { inputMode: 'numeric', placeholder: '1', shortLabel: 'Years' })}
               <span aria-hidden="true">to</span>
-              {input('toYear', `${label}: last year of retirement`, { inputMode: 'numeric', placeholder: 'End', shortLabel: '\u00a0' })}
+              {input('toYear', `${label}: last year of retirement`, { inputMode: 'numeric', placeholder: lastYearPlaceholder, shortLabel: '\u00a0' })}
             </div>
             <button type="button" className="text-button" onClick={() => onRemove(expense.id)} aria-label={`Remove ${label}`}>
               Remove

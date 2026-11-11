@@ -1149,6 +1149,7 @@ function App() {
                   errors={expenseErrors}
                   currency={planCurrency}
                   inflationPlaceholder={projectionWithdrawalInflationRate.trim() || '3'}
+                  lastYear={parseWholeNumber(projectionDrawdownYears, 1, maximumProjectionYears)}
                   onChange={updateExpense}
                   onAdd={() =>
                     setExpenses((current) => [...current, emptyExpense(nextExpenseId(current))])
