@@ -17,10 +17,13 @@ import {
 import { defaultGapWithdrawal, defaultPeople, displayName, ownerName, peopleFromSaved, type PersonForm } from './household'
 import { ExpenseEditor } from './ExpenseEditor'
 import {
+  emptyExpense,
   expensesFromSaved,
+  hasExpenseRanges,
   nextExpenseId,
   presetExpenses,
   totalExpensesCents,
+  totalExpensesForYearCents,
   validateExpenses,
   type ExpenseErrors,
   type ExpenseField,
@@ -379,8 +382,12 @@ function App() {
         {itemizeExpenses ? (
           <div className="form-field wide">
             <span className="field-label">{withdrawalLabel}</span>
-            <p className="itemized-total">{formatCurrency(totalExpensesCents(expenses), planCurrency)}</p>
-            <span className="field-help">The total of your expenses below.</span>
+            <p className="itemized-total">{formatCurrency(totalExpensesForYearCents(expenses, 1), planCurrency)}</p>
+            <span className="field-help">
+              {hasExpenseRanges(expenses)
+                ? 'Your expenses below in the first year of retirement; it changes as they start and stop.'
+                : 'The total of your expenses below.'}
+            </span>
             <button type="button" className="text-button" onClick={toggleItemizeExpenses}>
               Use one amount instead
             </button>
@@ -1144,7 +1151,7 @@ function App() {
                   inflationPlaceholder={projectionWithdrawalInflationRate.trim() || '3'}
                   onChange={updateExpense}
                   onAdd={() =>
-                    setExpenses((current) => [...current, { id: nextExpenseId(current), name: '', amount: '', inflationRate: '', years: '' }])
+                    setExpenses((current) => [...current, emptyExpense(nextExpenseId(current))])
                   }
                   onRemove={(id) => setExpenses((current) => current.filter((expense) => expense.id !== id))}
                   mortgage={mortgageExpenseNote}

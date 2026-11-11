@@ -648,9 +648,12 @@ describe('Financial items app', () => {
     fireEvent.change(screen.getByLabelText('Healthcare per year'), { target: { value: '12,000' } })
     fireEvent.change(screen.getByLabelText('Healthcare inflation (%)'), { target: { value: '5' } })
     fireEvent.change(screen.getByLabelText('Travel per year'), { target: { value: '10,000' } })
-    fireEvent.change(screen.getByLabelText('Travel: number of years'), { target: { value: '10' } })
+    fireEvent.change(screen.getByLabelText('Travel: last year of retirement'), { target: { value: '10' } })
+    fireEvent.change(screen.getByLabelText('Healthcare: first year of retirement'), { target: { value: '20' } })
     fireEvent.click(screen.getByRole('button', { name: 'Remove Taxes' }))
-    expect(screen.getByText('$62,000.00', { selector: '.itemized-total' })).toBeInTheDocument()
+    // Healthcare starts in year 20, so the first year is Travel + Other.
+    expect(screen.getByText('$50,000.00', { selector: '.itemized-total' })).toBeInTheDocument()
+    expect(screen.getByText(/It changes as expenses start and stop\./)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
@@ -659,8 +662,8 @@ describe('Financial items app', () => {
     expect(body.expenses).toEqual([
       { id: 'expense-1', name: 'Housing', annualAmountCents: 0 },
       { id: 'expense-2', name: 'Food', annualAmountCents: 0 },
-      { id: 'expense-3', name: 'Healthcare', annualAmountCents: 1200000, inflationRateBasisPoints: 500 },
-      { id: 'expense-4', name: 'Travel', annualAmountCents: 1000000, years: 10 },
+      { id: 'expense-3', name: 'Healthcare', annualAmountCents: 1200000, inflationRateBasisPoints: 500, fromYear: 20 },
+      { id: 'expense-4', name: 'Travel', annualAmountCents: 1000000, toYear: 10 },
       { id: 'expense-6', name: 'Other', annualAmountCents: 4000000 },
     ])
   })
@@ -676,10 +679,13 @@ describe('Financial items app', () => {
     fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '25' } })
     fireEvent.click(screen.getByRole('button', { name: 'Itemize expenses' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add expense' }))
-    fireEvent.change(screen.getByLabelText('Travel: number of years'), { target: { value: 'ten' } })
+    fireEvent.change(screen.getByLabelText('Travel: last year of retirement'), { target: { value: 'ten' } })
+    fireEvent.change(screen.getByLabelText('Healthcare: first year of retirement'), { target: { value: '9' } })
+    fireEvent.change(screen.getByLabelText('Healthcare: last year of retirement'), { target: { value: '4' } })
     fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
 
-    expect(await screen.findByText('Enter 1 to 75 years, or leave it blank for all years.')).toBeInTheDocument()
+    expect(await screen.findByText('Enter a year from 1 to 75, or leave it blank.')).toBeInTheDocument()
+    expect(screen.getByText('The last year can’t be before the first.')).toBeInTheDocument()
     expect(screen.getByText('Enter a name.')).toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -759,6 +765,31 @@ describe('Financial items app', () => {
 
     expect(await screen.findByText('The payment needs to be more than the monthly interest ($1,354.17).')).toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('carries over expenses saved with the older “first N years” setting', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+    window.localStorage.setItem(
+      'financials.session.v1',
+      JSON.stringify({
+        version: 1,
+        items: [],
+        projectionForm: {
+          savingYears: '10',
+          drawdownYears: '20',
+          annualWithdrawal: '0.00',
+          withdrawalInflationRate: '3.00',
+          itemizeExpenses: true,
+          expenses: [{ id: 'expense-1', name: 'Travel', amount: '9,000', inflationRate: '', years: '8' }],
+        },
+        lastSessionItemNumber: 0,
+      }),
+    )
+
+    render(<App />)
+    expect(screen.getByLabelText('Travel: first year of retirement')).toHaveValue('')
+    expect(screen.getByLabelText('Travel: last year of retirement')).toHaveValue('8')
   })
 
   it('remembers itemized expenses and the mortgage in this browser', async () => {

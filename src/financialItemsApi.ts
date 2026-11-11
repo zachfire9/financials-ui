@@ -77,8 +77,10 @@ export type ProjectionExpense = {
   name: string
   annualAmountCents: number
   inflationRateBasisPoints?: number
-  // Only the first N years of drawdown; omitted means every year.
-  years?: number
+  // A range of drawdown years (1 = first year of retirement), inclusive;
+  // omitted ends are open.
+  fromYear?: number
+  toYear?: number
 }
 
 export type ProjectionMortgage = {
