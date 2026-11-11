@@ -651,6 +651,32 @@ input[aria-invalid='true'] {
   text-decoration-color: var(--rule);
 }
 
+/* A secondary action on the light settings panel: outlined so it reads as
+   a button, quieter than Calculate. */
+.outline-button {
+  align-items: center;
+  align-self: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  color: var(--brand);
+  display: inline-flex;
+  font-size: 0.85rem;
+  font-weight: 600;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.75rem;
+}
+
+.outline-button:hover:not(:disabled) {
+  background: #eef4f2;
+  border-color: var(--brand);
+}
+
+.expense-intro {
+  margin: 0 0 0.75rem;
+}
+
 .field-label {
   display: block;
   font-size: 0.85rem;
@@ -759,14 +785,14 @@ input[aria-invalid='true'] {
 }
 
 .expense-footer {
-  align-items: baseline;
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 1.5rem;
   margin: 0.25rem 0 0.4rem;
 }
 
-.expense-footer .text-button {
+.expense-footer .outline-button {
   margin-top: 0;
 }
 
