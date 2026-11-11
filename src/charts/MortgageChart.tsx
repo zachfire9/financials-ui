@@ -7,7 +7,8 @@ const height = 220
 const margin = { top: 28, right: 24, bottom: 40, left: 68 }
 
 // The mortgage balance falling to zero, marked where payments switch from
-// salary to savings and where it's paid off.
+// salary to savings and where it's paid off. It spans the whole projection,
+// like the other charts, so the years line up when reading down the page.
 export function MortgageChart({ projection }: { projection: Projection }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const [containerRef, width] = useElementWidth<HTMLDivElement>()
@@ -19,8 +20,9 @@ export function MortgageChart({ projection }: { projection: Projection }) {
 
   const currency = projection.currency
   const payoffYear = mortgage.payoffYear
-  const lastYear = payoffYear > 0 ? payoffYear : mortgage.years[mortgage.years.length - 1].year
+  const lastYear = projection.totals[projection.totals.length - 1]?.year ?? mortgage.years[mortgage.years.length - 1].year
   const years: MortgageYear[] = mortgage.years.filter((entry) => entry.year <= lastYear)
+  const isPaidOff = (year: number) => payoffYear > 0 && year > payoffYear
   const firstFromSavings = years.find((entry) => entry.paidFromSavings)
   const savingsStart = firstFromSavings ? firstFromSavings.year - 1 : null
   const owedAtEnd = years[years.length - 1].balanceCents
@@ -146,6 +148,13 @@ export function MortgageChart({ projection }: { projection: Projection }) {
           {active ? (
             <>
               <p className="tooltip-title">Year {active.year}</p>
+              {isPaidOff(active.year) ? (
+                <ul>
+                  <li>
+                    <span className="tooltip-name">Paid off in year {payoffYear}</span>
+                  </li>
+                </ul>
+              ) : (
               <ul>
                 <li>
                   <span className="tooltip-name">Owed</span>
@@ -164,6 +173,7 @@ export function MortgageChart({ projection }: { projection: Projection }) {
                   </li>
                 ) : null}
               </ul>
+              )}
             </>
           ) : null}
         </div>

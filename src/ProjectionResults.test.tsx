@@ -354,6 +354,9 @@ describe('ProjectionResults', () => {
     expect(chart).toHaveTextContent('Paid off in year 2. Payments come from savings after year 1.')
     expect(container.querySelector('.mortgage-chart .phase-marker text')).toHaveTextContent('Paid off in year 2')
     expect(screen.getByText('Paid off, year 2')).toBeInTheDocument()
+    // The chart spans the whole projection (years 0-3), not just until payoff.
+    const yearLabels = Array.from(container.querySelectorAll('.mortgage-chart .chart-grid > text:not(.axis-title)')).map((label) => label.textContent)
+    expect(yearLabels.at(-1)).toBe('3')
 
     fireEvent.click(screen.getByRole('button', { name: 'Show yearly table' }))
     expect(within(screen.getByRole('table')).getByRole('columnheader', { name: 'Mortgage owed' })).toBeInTheDocument()
