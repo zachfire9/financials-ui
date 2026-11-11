@@ -10,11 +10,14 @@ type ExpenseEditorProps = {
   onChange: (id: string, field: ExpenseField, value: string) => void
   onAdd: () => void
   onRemove: (id: string) => void
+  // When the plan has a mortgage: what to say about its payments, which the
+  // projection adds on its own, so they shouldn't be entered as an expense.
+  mortgage?: { amount: string; summary: string } | null
 }
 
 // A row per expense: name, yearly amount, an optional inflation rate of its
 // own and an optional "first N years of retirement".
-export function ExpenseEditor({ expenses, errors, currency, inflationPlaceholder, onChange, onAdd, onRemove }: ExpenseEditorProps) {
+export function ExpenseEditor({ expenses, errors, currency, inflationPlaceholder, onChange, onAdd, onRemove, mortgage = null }: ExpenseEditorProps) {
   return (
     <div className="expense-editor">
       <div className="expense-row expense-headings" aria-hidden="true">
@@ -70,16 +73,25 @@ export function ExpenseEditor({ expenses, errors, currency, inflationPlaceholder
           </div>
         )
       })}
+      {mortgage ? (
+        <div className="expense-row expense-mortgage" role="group" aria-label="Mortgage, added automatically">
+          <span className="expense-mortgage-name">Mortgage</span>
+          <span className="expense-mortgage-amount">{mortgage.amount}</span>
+          <span className="expense-mortgage-summary">{mortgage.summary}</span>
+        </div>
+      ) : null}
       <div className="expense-footer">
         <button type="button" className="text-button" onClick={onAdd} disabled={expenses.length >= maximumExpenses}>
           Add expense
         </button>
         <span className="expense-total">
           Total: <strong>{formatCurrency(totalExpensesCents(expenses), currency)}</strong> a year in today’s dollars
+          {mortgage ? ', plus your mortgage' : ''}
         </span>
       </div>
       <p className="field-help">
         Leave inflation blank to use the plan’s rate, and years blank to include the expense every year of retirement.
+        {mortgage ? ' Your mortgage payment is added automatically, so put only property tax, insurance and upkeep under Housing.' : ''}
       </p>
     </div>
   )

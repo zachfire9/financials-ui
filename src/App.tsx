@@ -10,6 +10,7 @@ import {
   importFinancialItemsBackup,
   listFinancialItems,
   Projection,
+  ProjectionMortgage,
   ProjectionPerson,
   updateFinancialItem,
 } from './financialItemsApi'
@@ -402,6 +403,7 @@ function App() {
           </label>
           <span className="field-help" id="annual-withdrawal-help">
             In today’s dollars; grows with inflation.
+            {mortgageExpenseNote ? ` ${mortgageExpenseNote.withdrawalHelp}` : ''}
           </span>
           <FieldError id="annual-withdrawal-error" message={projectionFieldErrors.annualWithdrawal} />
           <button type="button" className="text-button" onClick={toggleItemizeExpenses}>
@@ -446,6 +448,7 @@ function App() {
     : previewMonths === null
       ? 'At this payment it won’t be paid off within 100 years.'
       : describePayoff(Math.ceil(previewMonths / 12), retirementYear)
+  const mortgageExpenseNote = mortgageEnabled ? describeMortgageExpense(previewMortgage, previewMonths, retirementYear, planCurrency) : null
 
   function mortgageField(field: MortgageField, label: string, placeholder: string, inputMode: 'decimal', help?: string) {
     const errorId = `mortgage-${field}-error`
@@ -1144,6 +1147,7 @@ function App() {
                     setExpenses((current) => [...current, { id: nextExpenseId(current), name: '', amount: '', inflationRate: '', years: '' }])
                   }
                   onRemove={(id) => setExpenses((current) => current.filter((expense) => expense.id !== id))}
+                  mortgage={mortgageExpenseNote}
                 />
               ) : null}
             </div>
@@ -1363,6 +1367,37 @@ function validateItemForm(
   }
 
   return { payload, errors }
+}
+
+// How the mortgage shows up next to retirement spending. The projection adds
+// payments made after retirement to the withdrawal on its own, so the expense
+// list shows them as a read-only line rather than asking for them.
+function describeMortgageExpense(
+  mortgage: ProjectionMortgage | null,
+  months: number | null,
+  retirementYear: number | null,
+  currency: string,
+) {
+  if (!mortgage) {
+    return { amount: 'Added automatically', summary: 'Enter the mortgage details below.', withdrawalHelp: 'Plus your mortgage payment until it’s paid off.' }
+  }
+  const amount = `${formatWholeCurrency(mortgage.monthlyPaymentCents * 12, currency)} a year`
+  if (months === null) {
+    return { amount, summary: 'Added automatically every year; it isn’t paid off within 100 years.', withdrawalHelp: 'Plus your mortgage payment every year.' }
+  }
+  const payoffYear = Math.ceil(months / 12)
+  if (retirementYear !== null && payoffYear <= retirementYear) {
+    return {
+      amount,
+      summary: `Paid off in year ${payoffYear}, before retirement, so nothing is added.`,
+      withdrawalHelp: 'Your mortgage is paid off before retirement.',
+    }
+  }
+  return {
+    amount,
+    summary: `Added automatically until it’s paid off in year ${payoffYear}. The payment stays the same; it doesn’t grow with inflation.`,
+    withdrawalHelp: `Plus your mortgage payment until year ${payoffYear}.`,
+  }
 }
 
 function describePayoff(payoffYear: number, retirementYear: number | null) {
