@@ -34,6 +34,8 @@ const accountFieldNames: Record<string, string> = {
   annualContributionCents: 'annual contribution',
   sortOrder: 'position in the list',
   ownerId: 'owner',
+  withdrawalPriority: 'withdrawal order',
+  withdrawalAvailableAfterYear: 'withdrawal availability',
 }
 
 export type TranslatedProjectionError = {

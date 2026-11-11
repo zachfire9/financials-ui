@@ -566,6 +566,72 @@ describe('Financial items app', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('sends each account’s withdrawal order and availability', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    const fetchMock = vi.fn().mockImplementation(async () => jsonResponse(exampleProjection))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Brokerage' } })
+    fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '1000.00' } })
+    fireEvent.change(screen.getByLabelText(/^annual return/i), { target: { value: '5.00' } })
+    fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '0.00' } })
+    fireEvent.change(screen.getByLabelText('Withdraw'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Available'), { target: { value: 'year' } })
+    fireEvent.change(screen.getByLabelText('Available after year'), { target: { value: '5' } })
+    fireEvent.click(screen.getByRole('button', { name: /add account/i }))
+    expect(await screen.findByText('Withdrawn first, available after year 5.')).toBeInTheDocument()
+
+    addSessionItem('Savings')
+    await screen.findByText('Savings')
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const body = requestBodyAt(fetchMock, 0)
+    expect(body.items[0]).toEqual(expect.objectContaining({ name: 'Brokerage', withdrawalPriority: 1, withdrawalAvailableAfterYear: 5 }))
+    expect(body.items[1].withdrawalPriority).toBeUndefined()
+    expect(body.items[1].withdrawalAvailableAfterYear).toBeUndefined()
+  })
+
+  it('defaults an owned account to being available once its owner retires', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+
+    render(<App />)
+    addSessionItem('Sam 401k')
+    await screen.findByText('Sam 401k')
+    fireEvent.click(screen.getByLabelText('Two of us, retiring at different times'))
+    fireEvent.change(within(screen.getByRole('group', { name: 'Person 2' })).getByLabelText('Name'), { target: { value: 'Sam' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Sam 401k' }))
+    fireEvent.change(screen.getByLabelText('Owner'), { target: { value: 'person-2' } })
+    const availability = screen.getByLabelText('Available')
+    expect(within(availability).getByRole('option', { name: 'When Sam retires' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Save account' }))
+    expect(await screen.findByText('Available once Sam retires.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Sam 401k' }))
+    fireEvent.change(screen.getByLabelText('Available'), { target: { value: 'now' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save account' }))
+    expect(await screen.findByText('Available anytime.')).toBeInTheDocument()
+  })
+
+  it('checks the year an account becomes available', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+
+    render(<App />)
+    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Brokerage' } })
+    fireEvent.change(screen.getByLabelText(/current amount/i), { target: { value: '1000.00' } })
+    fireEvent.change(screen.getByLabelText(/^annual return/i), { target: { value: '5.00' } })
+    fireEvent.change(screen.getByLabelText(/annual contribution/i), { target: { value: '0.00' } })
+    fireEvent.change(screen.getByLabelText('Available'), { target: { value: 'year' } })
+    fireEvent.change(screen.getByLabelText('Available after year'), { target: { value: 'soon' } })
+    fireEvent.click(screen.getByRole('button', { name: /add account/i }))
+
+    expect(await screen.findByText('Enter a whole number of years from 0 to 150.')).toBeInTheDocument()
+    expect(screen.queryByText('Withdrawn first')).not.toBeInTheDocument()
+  })
+
   it('exports ephemeral browser-owned data without calling the backup API', async () => {
     vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
     const createObjectURL = vi.fn().mockReturnValue('blob:financial-backup')

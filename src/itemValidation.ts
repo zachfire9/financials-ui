@@ -7,6 +7,7 @@ export const currencyCodePattern = /^[A-Z]{3}$/
 const minimumReturnRateBasisPoints = -10000
 const maximumReturnRateBasisPoints = 100000
 const maximumOwnerIDLength = 64
+const maximumAvailableAfterYear = 150
 
 // Checks one imported backup item against the same rules the API enforces, so
 // a hand-edited or corrupted file is rejected with a clear message instead of
@@ -56,6 +57,17 @@ export function importedItemProblems(item: unknown, index: number): string[] {
     (typeof value.ownerId !== 'string' || value.ownerId.length > maximumOwnerIDLength || value.ownerId.trim() !== value.ownerId)
   ) {
     problems.push(`${label} ownerId must be text of at most ${maximumOwnerIDLength} characters.`)
+  }
+  if (!isMissing('withdrawalPriority') && ![0, 1, 2, 3].includes(value.withdrawalPriority as number)) {
+    problems.push(`${label} withdrawalPriority must be 1 (first), 2 (normal) or 3 (last).`)
+  }
+  if (
+    !isMissing('withdrawalAvailableAfterYear') &&
+    (!Number.isInteger(value.withdrawalAvailableAfterYear) ||
+      (value.withdrawalAvailableAfterYear as number) < 0 ||
+      (value.withdrawalAvailableAfterYear as number) > maximumAvailableAfterYear)
+  ) {
+    problems.push(`${label} withdrawalAvailableAfterYear must be a whole number from 0 to ${maximumAvailableAfterYear}.`)
   }
 
   return problems

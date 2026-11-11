@@ -59,4 +59,12 @@ describe('translateProjectionError', () => {
     })
     expect(result.messages).toEqual(['“Alex 401k” has an invalid owner. Edit it in the accounts list.'])
   })
+
+  it('names the withdrawal settings in account problems', () => {
+    const result = translateProjectionError(
+      'invalid projection request: items[0].withdrawalPriority must be 1 (first), 2 (normal) or 3 (last)',
+      ['Brokerage'],
+    )
+    expect(result.messages).toEqual(['“Brokerage” has an invalid withdrawal order. Edit it in the accounts list.'])
+  })
 })

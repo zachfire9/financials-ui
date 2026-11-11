@@ -33,6 +33,9 @@ export function ProjectionResults({ projection, colorFor, people = null }: Proje
   const hasWithdrawals = totals.some(
     (total) => total.phase === 'drawdown' || (total.phase === 'transition' && (total.withdrawalCents ?? 0) > 0),
   )
+  // Money that existed but couldn't be withdrawn in the first short year, for
+  // example a 401(k) of someone still working.
+  const lockedAtShortfallCents = firstShortfallYear?.lockedBalanceCents ?? 0
   const shortfallWhileWorking = Boolean(firstShortfallYear) && transitionYears > 0 && firstShortfallYear.year <= bothRetiredAfter
   const currency = projection.currency
 
@@ -70,6 +73,9 @@ export function ProjectionResults({ projection, colorFor, people = null }: Proje
               ? `while ${stillWorkingName} is still working`
               : `drawdown year ${firstShortfallYear.year - bothRetiredAfter}`}
             ). {formatCurrency(totalShortfallCents, currency)} of planned withdrawals can't be covered over the projection.
+            {lockedAtShortfallCents > 0
+              ? ` That year, ${formatCurrency(lockedAtShortfallCents, currency)} was still in accounts you can’t withdraw from yet.`
+              : ''}
           </p>
         ) : hasWithdrawals ? (
           <p className="funding-status funded">
