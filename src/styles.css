@@ -681,7 +681,9 @@ input[aria-invalid='true'] {
   align-items: start;
   display: grid;
   gap: 0.6rem;
-  grid-template-columns: minmax(0, 13rem) minmax(0, 8.5rem) minmax(0, 6.5rem) minmax(0, 11rem) auto;
+  /* The year range gets a fixed width that fits two digits per box; the
+     name, amount and inflation share what's left. */
+  grid-template-columns: minmax(6rem, 1.6fr) minmax(5.5rem, 1fr) minmax(4.25rem, 0.75fr) 7.25rem auto;
   margin-bottom: 0.5rem;
 }
 
@@ -692,14 +694,25 @@ input[aria-invalid='true'] {
   margin-bottom: 0.3rem;
 }
 
+.expense-heading-spacer {
+  visibility: hidden;
+}
+
 .expense-cell input {
   margin-top: 0;
+  padding-inline: 0.7rem;
+}
+
+/* Year boxes hold one or two digits: centered, with less padding. */
+.expense-years input {
+  padding-inline: 0.3rem;
+  text-align: center;
 }
 
 .expense-years {
   align-items: start;
   display: flex;
-  gap: 0.4rem;
+  gap: 0.35rem;
 }
 
 .expense-years > .expense-cell {
