@@ -18,6 +18,10 @@ export const flowColors = {
   shortfall: '#a12a2a',
 }
 
+// The mortgage balance, a lone series on its own chart. Validated on the
+// chart surface: lightness, chroma and >= 3:1 contrast pass.
+export const mortgageColor = '#a8611c'
+
 export type LinearScale = {
   (value: number): number
   ticks: number[]

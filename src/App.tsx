@@ -14,6 +14,26 @@ import {
   updateFinancialItem,
 } from './financialItemsApi'
 import { defaultGapWithdrawal, defaultPeople, displayName, ownerName, peopleFromSaved, type PersonForm } from './household'
+import { ExpenseEditor } from './ExpenseEditor'
+import {
+  expensesFromSaved,
+  nextExpenseId,
+  presetExpenses,
+  totalExpensesCents,
+  validateExpenses,
+  type ExpenseErrors,
+  type ExpenseField,
+  type ExpenseForm,
+} from './expenses'
+import {
+  emptyMortgage,
+  mortgageFromSaved,
+  payoffMonths,
+  validateMortgage,
+  type MortgageErrors,
+  type MortgageField,
+  type MortgageForm,
+} from './mortgage'
 import { accountColors, otherAccountColor } from './charts/chartUtils'
 import { formatCurrency, formatRate, formatWholeCurrency, pluralize } from './format'
 import { parseHundredths, parseWholeNumber } from './numberInput'
@@ -85,6 +105,16 @@ function App() {
   const [householdPlan, setHouseholdPlan] = useState(restoredSession?.projectionForm.householdPlan ?? false)
   const [people, setPeople] = useState<PersonForm[]>(() => peopleFromSaved(restoredSession?.projectionForm.people))
   const [gapWithdrawal, setGapWithdrawal] = useState(restoredSession?.projectionForm.gapWithdrawal ?? defaultGapWithdrawal)
+  const [itemizeExpenses, setItemizeExpenses] = useState(restoredSession?.projectionForm.itemizeExpenses ?? false)
+  const [expenses, setExpenses] = useState<ExpenseForm[]>(
+    () => expensesFromSaved(restoredSession?.projectionForm.expenses) ?? presetExpenses(''),
+  )
+  const [expenseErrors, setExpenseErrors] = useState<ExpenseErrors>({})
+  const [mortgageEnabled, setMortgageEnabled] = useState(restoredSession?.projectionForm.mortgageEnabled ?? false)
+  const [mortgageForm, setMortgageForm] = useState<MortgageForm>(
+    () => mortgageFromSaved(restoredSession?.projectionForm.mortgage) ?? emptyMortgage,
+  )
+  const [mortgageErrors, setMortgageErrors] = useState<MortgageErrors>({})
   const [projection, setProjection] = useState<Projection | null>(null)
   // The people a projection was calculated with, for labels in the results.
   const [projectionPeople, setProjectionPeople] = useState<ProjectionPerson[] | null>(null)
@@ -157,6 +187,10 @@ function App() {
         householdPlan,
         people,
         gapWithdrawal,
+        itemizeExpenses,
+        expenses,
+        mortgageEnabled,
+        mortgage: mortgageForm,
       },
       lastSessionItemNumber: Math.max(lastSessionItemNumber.current, highestSessionItemNumber(items)),
     })
@@ -170,6 +204,10 @@ function App() {
     householdPlan,
     people,
     gapWithdrawal,
+    itemizeExpenses,
+    expenses,
+    mortgageEnabled,
+    mortgageForm,
   ])
 
   useEffect(() => {
@@ -314,6 +352,8 @@ function App() {
   }
 
   const householdTimeline = describeHouseholdTimeline(people)
+  // Settings amounts are shown in the accounts' currency.
+  const planCurrency = items[0]?.currency ?? 'USD'
 
   // The drawdown fields, shared by both layouts with layout-specific labels.
   function withdrawalFields(withdrawalLabel: string, yearsLabel: string) {
@@ -335,6 +375,16 @@ function App() {
           </label>
           <FieldError id="drawdown-years-error" message={projectionFieldErrors.drawdownYears} />
         </div>
+        {itemizeExpenses ? (
+          <div className="form-field wide">
+            <span className="field-label">{withdrawalLabel}</span>
+            <p className="itemized-total">{formatCurrency(totalExpensesCents(expenses), planCurrency)}</p>
+            <span className="field-help">The total of your expenses below.</span>
+            <button type="button" className="text-button" onClick={toggleItemizeExpenses}>
+              Use one amount instead
+            </button>
+          </div>
+        ) : (
         <div className="form-field wide">
           <label>
             {withdrawalLabel}
@@ -354,7 +404,11 @@ function App() {
             In today’s dollars; grows with inflation.
           </span>
           <FieldError id="annual-withdrawal-error" message={projectionFieldErrors.annualWithdrawal} />
+          <button type="button" className="text-button" onClick={toggleItemizeExpenses}>
+            Itemize expenses
+          </button>
         </div>
+        )}
       </>
     )
   }
@@ -380,11 +434,79 @@ function App() {
     </div>
   )
 
+  const singleYears = parseWholeNumber(projectionSavingYears, 0, maximumProjectionYears)
+  const singleDrawdownStart = singleYears === null ? 'Withdrawals for the rest of retirement.' : `Starts in year ${singleYears + 1}.`
+  const retirementYear = householdPlan ? householdTimeline.bothRetiredAfter : singleYears
+
+  // A quick payoff estimate while typing; the projection has the exact figures.
+  const previewMortgage = mortgageEnabled ? validateMortgage(mortgageForm, planCurrency).mortgage : null
+  const previewMonths = previewMortgage ? payoffMonths(previewMortgage) : null
+  const mortgagePreview = !previewMortgage
+    ? null
+    : previewMonths === null
+      ? 'At this payment it won’t be paid off within 100 years.'
+      : describePayoff(Math.ceil(previewMonths / 12), retirementYear)
+
+  function mortgageField(field: MortgageField, label: string, placeholder: string, inputMode: 'decimal', help?: string) {
+    const errorId = `mortgage-${field}-error`
+    const helpId = help ? `mortgage-${field}-help` : undefined
+    return (
+      <div className="form-field">
+        <label>
+          {label}
+          <input
+            inputMode={inputMode}
+            value={mortgageForm[field]}
+            placeholder={placeholder}
+            onChange={(event) => updateMortgage(field, event.target.value)}
+            aria-invalid={mortgageErrors[field] ? true : undefined}
+            aria-describedby={[helpId, mortgageErrors[field] ? errorId : undefined].filter(Boolean).join(' ') || undefined}
+          />
+        </label>
+        {help ? (
+          <span className="field-help" id={helpId}>
+            {help}
+          </span>
+        ) : null}
+        <FieldError id={errorId} message={mortgageErrors[field]} />
+      </div>
+    )
+  }
+
   const calculateButton = (
     <button type="submit" className="primary-button calculate-button" disabled={isCalculatingProjection || items.length === 0}>
       {isCalculatingProjection ? 'Calculating…' : 'Calculate projection'}
     </button>
   )
+
+  function updateExpense(id: string, field: ExpenseField, value: string) {
+    setExpenses((current) => current.map((expense) => (expense.id === id ? { ...expense, [field]: value } : expense)))
+    setExpenseErrors((current) => {
+      if (!current[id]?.[field]) return current
+      const row = { ...current[id] }
+      delete row[field]
+      return { ...current, [id]: row }
+    })
+  }
+
+  function toggleItemizeExpenses() {
+    if (!itemizeExpenses && totalExpensesCents(expenses) === 0) {
+      // First time: start from the common categories, keeping the current total.
+      setExpenses(presetExpenses(projectionAnnualWithdrawal))
+    }
+    setItemizeExpenses(!itemizeExpenses)
+    setProjectionFieldErrors((current) => withoutField(current, 'annualWithdrawal'))
+  }
+
+  function updateMortgage(field: MortgageField, value: string) {
+    setMortgageForm((current) => ({ ...current, [field]: value }))
+    setMortgageErrors((current) => {
+      if (!current[field]) return current
+      const next = { ...current }
+      delete next[field]
+      return next
+    })
+  }
 
   function updatePerson(index: number, field: 'name' | 'savingYears', value: string) {
     setPeople((current) => current.map((person, personIndex) => (personIndex === index ? { ...person, [field]: value } : person)))
@@ -411,6 +533,12 @@ function App() {
     setHouseholdPlan(false)
     setPeople(defaultPeople)
     setGapWithdrawal(defaultGapWithdrawal)
+    setItemizeExpenses(false)
+    setExpenses(presetExpenses(''))
+    setExpenseErrors({})
+    setMortgageEnabled(false)
+    setMortgageForm(emptyMortgage)
+    setMortgageErrors({})
     setProjectionPeople(null)
     setProjectionFieldErrors({})
     setErrorMessage(null)
@@ -538,9 +666,18 @@ function App() {
         gapWithdrawal,
       },
       householdPlan ? people : null,
+      { itemized: itemizeExpenses },
     )
+    const expenseResult = itemizeExpenses ? validateExpenses(expenses) : { expenses: null, errors: {} }
+    const mortgageResult = mortgageEnabled ? validateMortgage(mortgageForm, planCurrency) : { mortgage: null, errors: {} }
     setProjectionFieldErrors(errors)
-    if (!projectionInputs) {
+    setExpenseErrors(expenseResult.errors)
+    setMortgageErrors(mortgageResult.errors)
+    if (
+      !projectionInputs ||
+      (itemizeExpenses && !expenseResult.expenses) ||
+      (mortgageEnabled && !mortgageResult.mortgage)
+    ) {
       return
     }
 
@@ -551,6 +688,8 @@ function App() {
     try {
       const projectionRequest = {
         ...projectionInputs,
+        ...(itemizeExpenses && expenseResult.expenses ? { expenses: expenseResult.expenses, annualWithdrawalCents: 0 } : {}),
+        ...(mortgageEnabled && mortgageResult.mortgage ? { mortgage: mortgageResult.mortgage } : {}),
         ...(isEphemeralSession ? { items: items.map((item) => ({ id: item.id, ...itemToPayload(item) })) } : {}),
       }
       const itemsSignature = signatureForProjection(items)
@@ -875,7 +1014,7 @@ function App() {
 
       <main className="workspace">
         <form
-          className={householdPlan ? 'projection-controls household' : 'projection-controls'}
+          className="projection-controls grouped"
           onSubmit={handleProjectionSubmit}
           aria-label="Projection settings"
         >
@@ -959,44 +1098,86 @@ function App() {
                 </div>
               </section>
 
-              <section className="settings-group" aria-labelledby="settings-drawdown">
-                <div className="settings-group-intro">
-                  <h3 id="settings-drawdown">Once you’ve both retired</h3>
-                  <p>{householdTimeline.drawdown}</p>
-                </div>
-                <div className="settings-group-fields">
-                  {withdrawalFields('Withdrawal per year', 'For how many years')}
-                </div>
-              </section>
-
-              <div className="settings-footer">
-                {inflationField}
-                {calculateButton}
-              </div>
             </>
           ) : (
-            <>
-              <div className="form-field">
-                <label>
-                  Saving years
-                  <input
-                    inputMode="numeric"
-                    min="0"
-                    max="75"
-                    required
-                    value={projectionSavingYears}
-                    onChange={(event) => updateProjectionField('savingYears', event.target.value, setProjectionSavingYears)}
-                    aria-invalid={projectionFieldErrors.savingYears ? true : undefined}
-                    aria-describedby={projectionFieldErrors.savingYears ? 'saving-years-error' : undefined}
-                  />
-                </label>
-                <FieldError id="saving-years-error" message={projectionFieldErrors.savingYears} />
+            <section className="settings-group" aria-labelledby="settings-saving">
+              <div className="settings-group-intro">
+                <h3 id="settings-saving">Saving</h3>
+                <p>Years until you retire. Accounts keep their contributions until then.</p>
               </div>
-              {withdrawalFields('Annual withdrawal', 'Drawdown years')}
-              {inflationField}
-              {calculateButton}
-            </>
+              <div className="settings-group-fields">
+                <div className="form-field">
+                  <label>
+                    Saving years
+                    <input
+                      inputMode="numeric"
+                      min="0"
+                      max="75"
+                      required
+                      value={projectionSavingYears}
+                      onChange={(event) => updateProjectionField('savingYears', event.target.value, setProjectionSavingYears)}
+                      aria-invalid={projectionFieldErrors.savingYears ? true : undefined}
+                      aria-describedby={projectionFieldErrors.savingYears ? 'saving-years-error' : undefined}
+                    />
+                  </label>
+                  <FieldError id="saving-years-error" message={projectionFieldErrors.savingYears} />
+                </div>
+              </div>
+            </section>
           )}
+
+          <section className="settings-group" aria-labelledby="settings-drawdown">
+            <div className="settings-group-intro">
+              <h3 id="settings-drawdown">{householdPlan ? 'Once you’ve both retired' : 'In retirement'}</h3>
+              <p>{householdPlan ? householdTimeline.drawdown : singleDrawdownStart}</p>
+            </div>
+            <div className="settings-group-fields">
+              {householdPlan ? withdrawalFields('Withdrawal per year', 'For how many years') : withdrawalFields('Annual withdrawal', 'Drawdown years')}
+              {itemizeExpenses ? (
+                <ExpenseEditor
+                  expenses={expenses}
+                  errors={expenseErrors}
+                  currency={planCurrency}
+                  inflationPlaceholder={projectionWithdrawalInflationRate.trim() || '3'}
+                  onChange={updateExpense}
+                  onAdd={() =>
+                    setExpenses((current) => [...current, { id: nextExpenseId(current), name: '', amount: '', inflationRate: '', years: '' }])
+                  }
+                  onRemove={(id) => setExpenses((current) => current.filter((expense) => expense.id !== id))}
+                />
+              ) : null}
+            </div>
+          </section>
+
+          <section className="settings-group" aria-labelledby="settings-mortgage">
+            <div className="settings-group-intro">
+              <h3 id="settings-mortgage">Mortgage</h3>
+              <p>
+                {householdPlan
+                  ? 'Paid from your salaries until you’ve both retired, then from savings.'
+                  : 'Paid from your salary until you retire, then from savings.'}
+              </p>
+            </div>
+            <div className="settings-group-fields">
+              <label className="checkbox-control mortgage-toggle">
+                <input type="checkbox" checked={mortgageEnabled} onChange={(event) => setMortgageEnabled(event.target.checked)} />
+                Include a mortgage
+              </label>
+              {mortgageEnabled ? (
+                <>
+                  {mortgageField('balance', 'Left to pay', '250,000', 'decimal')}
+                  {mortgageField('rate', 'APR (%)', '6.5', 'decimal')}
+                  {mortgageField('payment', 'Monthly payment', '1,800', 'decimal', 'Principal and interest. Put property tax and insurance in your expenses.')}
+                  {mortgagePreview ? <p className="field-help mortgage-preview">{mortgagePreview}</p> : null}
+                </>
+              ) : null}
+            </div>
+          </section>
+
+          <div className="settings-footer">
+            {inflationField}
+            {calculateButton}
+          </div>
         </form>
 
         {errorMessage ? (
@@ -1184,6 +1365,13 @@ function validateItemForm(
   return { payload, errors }
 }
 
+function describePayoff(payoffYear: number, retirementYear: number | null) {
+  const base = `At this payment it’s paid off in about ${pluralize(payoffYear, 'year')}`
+  if (retirementYear === null) return `${base}.`
+  if (payoffYear <= retirementYear) return `${base}, before retirement.`
+  return `${base}, so savings cover ${pluralize(payoffYear - retirementYear, 'year')} of payments.`
+}
+
 // Plain-language description of the household timeline, from the settings as
 // typed. Falls back to general wording while the years aren't valid yet.
 function describeHouseholdTimeline(people: PersonForm[]) {
@@ -1193,6 +1381,7 @@ function describeHouseholdTimeline(people: PersonForm[]) {
       hasGap: true,
       gap: 'The years after the first of you retires and before the other does.',
       drawdown: 'Withdrawals for the rest of retirement.',
+      bothRetiredAfter: null,
     }
   }
   const sorted = people
@@ -1203,10 +1392,10 @@ function describeHouseholdTimeline(people: PersonForm[]) {
   const bothRetiredAfter = last.years
   const drawdown = `Starts in year ${bothRetiredAfter + 1}.`
   if (first.years === last.years) {
-    return { hasGap: false, gap: `You both retire after year ${last.years}, so there are no years in between.`, drawdown }
+    return { hasGap: false, gap: `You both retire after year ${last.years}, so there are no years in between.`, drawdown, bothRetiredAfter }
   }
   const span = first.years + 1 === last.years ? `In year ${last.years}` : `In years ${first.years + 1}–${last.years}`
-  return { hasGap: true, gap: `${span}, ${first.name} is retired and ${last.name} is still working.`, drawdown }
+  return { hasGap: true, gap: `${span}, ${first.name} is retired and ${last.name} is still working.`, drawdown, bothRetiredAfter }
 }
 
 type ProjectionInputs = {
@@ -1231,6 +1420,7 @@ type ProjectionFormValues = {
 function validateProjectionForm(
   values: ProjectionFormValues,
   people: PersonForm[] | null,
+  { itemized = false }: { itemized?: boolean } = {},
 ): { request: ProjectionInputs | null; errors: FieldErrors<ProjectionField> } {
   const errors: FieldErrors<ProjectionField> = {}
   const personYears = (people ?? []).map((person) => parseWholeNumber(person.savingYears, 0, maximumProjectionYears))
@@ -1247,7 +1437,8 @@ function validateProjectionForm(
     : parseWholeNumber(values.savingYears, 0, maximumProjectionYears)
   const drawdownYears =
     values.drawdownYears.trim() === '' ? 0 : parseWholeNumber(values.drawdownYears, 0, maximumProjectionYears)
-  const annualWithdrawalCents = parseHundredths(values.annualWithdrawal)
+  // Itemized expenses replace the single amount; they're validated separately.
+  const annualWithdrawalCents = itemized ? 0 : parseHundredths(values.annualWithdrawal)
   const annualWithdrawalInflationRateBasisPoints = parseHundredths(values.withdrawalInflationRate)
 
   if (savingYears === null && !people) errors.savingYears = projectionMessages.years
@@ -1260,7 +1451,7 @@ function validateProjectionForm(
   if (savingYears !== null && drawdownYears !== null && savingYears + drawdownYears === 0) {
     errors.drawdownYears = projectionMessages.noYears
   }
-  if (drawdownYears !== null && drawdownYears > 0 && annualWithdrawalCents === 0) {
+  if (!itemized && drawdownYears !== null && drawdownYears > 0 && annualWithdrawalCents === 0) {
     errors.annualWithdrawal = projectionMessages.withdrawalRequired
   }
   if (annualWithdrawalInflationRateBasisPoints !== null && annualWithdrawalInflationRateBasisPoints > maximumInflationPercent * 100) {

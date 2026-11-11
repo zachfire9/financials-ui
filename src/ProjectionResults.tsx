@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { BalanceChart } from './charts/BalanceChart'
 import { FlowsChart } from './charts/FlowsChart'
+import { MortgageChart } from './charts/MortgageChart'
 import type { Projection, ProjectionPerson } from './financialItemsApi'
 import { formatCompactCurrency, formatCurrency, pluralize } from './format'
 import { displayName, firstToRetire, lastToRetire } from './household'
@@ -64,6 +65,12 @@ export function ProjectionResults({ projection, colorFor, people = null }: Proje
             <dt>At year {finalYear.year}</dt>
             <dd>{formatCompactCurrency(finalYear.balanceCents, currency)}</dd>
           </div>
+          {projection.mortgage ? (
+            <div>
+              <dt>Mortgage</dt>
+              <dd>{projection.mortgage.payoffYear > 0 ? `Paid off, year ${projection.mortgage.payoffYear}` : 'Not paid off'}</dd>
+            </div>
+          ) : null}
         </dl>
         {firstShortfallYear ? (
           <p className="funding-status shortfall">
@@ -87,6 +94,7 @@ export function ProjectionResults({ projection, colorFor, people = null }: Proje
 
       <BalanceChart projection={projection} colorFor={colorFor} stillWorkingName={stillWorking ? stillWorkingName : null} />
       <FlowsChart projection={projection} />
+      <MortgageChart projection={projection} />
 
       <section className="yearly-table">
         <button
@@ -133,6 +141,8 @@ export function ProjectionResults({ projection, colorFor, people = null }: Proje
 }
 
 function YearlyTable({ projection, hasShortfall }: { projection: Projection; hasShortfall: boolean }) {
+  const mortgageByYear = new Map((projection.mortgage?.years ?? []).map((entry) => [entry.year, entry]))
+  const hasMortgage = mortgageByYear.size > 0
   const rows = projection.totals.flatMap((total) =>
     projection.items.map((item, itemIndex) => ({
       annualWithdrawalCents: total.withdrawalCents ?? 0,
@@ -161,6 +171,7 @@ function YearlyTable({ projection, hasShortfall }: { projection: Projection; has
             <th scope="col" className="num">Growth</th>
             <th scope="col" className="num">Item balance</th>
             <th scope="col" className="num">Combined balance</th>
+            {hasMortgage ? <th scope="col" className="num">Mortgage owed</th> : null}
           </tr>
         </thead>
         <tbody>
@@ -186,6 +197,11 @@ function YearlyTable({ projection, hasShortfall }: { projection: Projection; has
                 <td className="num">{formatCurrency(yearlyBalance.growthCents, projection.currency)}</td>
                 <td className="num">{formatCurrency(yearlyBalance.balanceCents, projection.currency)}</td>
                 <td className="num">{isFirstItemForYear ? formatCurrency(combinedBalanceCents, projection.currency) : ''}</td>
+                {hasMortgage ? (
+                  <td className="num">
+                    {isFirstItemForYear ? formatCurrency(mortgageByYear.get(year)?.balanceCents ?? 0, projection.currency) : ''}
+                  </td>
+                ) : null}
               </tr>
             )
           })}

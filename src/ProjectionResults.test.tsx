@@ -325,6 +325,45 @@ describe('ProjectionResults', () => {
     expect(screen.getByText(/That year, \$5,000\.00 was still in accounts you can’t withdraw from yet\./)).toBeInTheDocument()
   })
 
+  it('charts the mortgage until it’s paid off', () => {
+    const withMortgage = {
+      ...projectionWith(
+        [
+          {
+            id: 'a',
+            name: 'Savings',
+            balances: [year(0, 'starting', 500000), year(1, 'saving', 500000), year(2, 'drawdown', 480000, { withdrawalCents: 20000 }), year(3, 'drawdown', 470000, { withdrawalCents: 10000 })],
+          },
+        ],
+        1,
+        2,
+      ),
+      mortgage: {
+        payoffYear: 2,
+        years: [
+          { year: 0, balanceCents: 15000, paymentCents: 0, interestCents: 0, paidFromSavings: false },
+          { year: 1, balanceCents: 5000, paymentCents: 10500, interestCents: 500, paidFromSavings: false },
+          { year: 2, balanceCents: 0, paymentCents: 5100, interestCents: 100, paidFromSavings: true },
+          { year: 3, balanceCents: 0, paymentCents: 0, interestCents: 0, paidFromSavings: false },
+        ],
+      },
+    }
+    const { container } = render(<ProjectionResults projection={withMortgage} colorFor={colorFor} />)
+
+    const chart = screen.getByRole('figure', { name: 'Mortgage' })
+    expect(chart).toHaveTextContent('Paid off in year 2. Payments come from savings after year 1.')
+    expect(container.querySelector('.mortgage-chart .phase-marker text')).toHaveTextContent('Paid off in year 2')
+    expect(screen.getByText('Paid off, year 2')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show yearly table' }))
+    expect(within(screen.getByRole('table')).getByRole('columnheader', { name: 'Mortgage owed' })).toBeInTheDocument()
+  })
+
+  it('leaves the mortgage chart out without a mortgage', () => {
+    render(<ProjectionResults projection={projectionWith([{ id: 'a', name: 'Savings', balances: [year(0, 'starting', 100), year(1, 'saving', 110)] }], 1, 0)} colorFor={colorFor} />)
+    expect(screen.queryByRole('figure', { name: 'Mortgage' })).not.toBeInTheDocument()
+  })
+
   it('keeps the yearly table one click away', () => {
     render(<ProjectionResults projection={fundedProjection} colorFor={colorFor} />)
     const toggle = screen.getByRole('button', { name: 'Show yearly table' })

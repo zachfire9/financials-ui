@@ -215,7 +215,7 @@ describe('Financial items app', () => {
     fireEvent.click(screen.getByRole('button', { name: /save account/i }))
 
     await screen.findByText('Account D renamed')
-    expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
+    expect(within(screen.getByRole('complementary')).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
       'Account B',
       'Account C',
       'Account D renamed',
@@ -632,6 +632,114 @@ describe('Financial items app', () => {
     expect(screen.queryByText('Withdrawn first')).not.toBeInTheDocument()
   })
 
+  it('itemizes retirement expenses into the withdrawal', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    const fetchMock = vi.fn().mockImplementation(async () => jsonResponse(exampleProjection))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    addSessionItem('Savings')
+    await screen.findByText('Savings')
+    fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '25' } })
+    fireEvent.change(screen.getByLabelText(/^annual withdrawal/i), { target: { value: '40,000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Itemize expenses' }))
+
+    expect(screen.getByLabelText('Other per year')).toHaveValue('40,000')
+    fireEvent.change(screen.getByLabelText('Healthcare per year'), { target: { value: '12,000' } })
+    fireEvent.change(screen.getByLabelText('Healthcare inflation (%)'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Travel per year'), { target: { value: '10,000' } })
+    fireEvent.change(screen.getByLabelText('Travel: number of years'), { target: { value: '10' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Taxes' }))
+    expect(screen.getByText('$62,000.00', { selector: '.itemized-total' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const body = requestBodyAt(fetchMock, 0)
+    expect(body.annualWithdrawalCents).toBe(0)
+    expect(body.expenses).toEqual([
+      { id: 'expense-1', name: 'Housing', annualAmountCents: 0 },
+      { id: 'expense-2', name: 'Food', annualAmountCents: 0 },
+      { id: 'expense-3', name: 'Healthcare', annualAmountCents: 1200000, inflationRateBasisPoints: 500 },
+      { id: 'expense-4', name: 'Travel', annualAmountCents: 1000000, years: 10 },
+      { id: 'expense-6', name: 'Other', annualAmountCents: 4000000 },
+    ])
+  })
+
+  it('checks each expense before calculating', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    addSessionItem('Savings')
+    await screen.findByText('Savings')
+    fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '25' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Itemize expenses' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add expense' }))
+    fireEvent.change(screen.getByLabelText('Travel: number of years'), { target: { value: 'ten' } })
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+
+    expect(await screen.findByText('Enter 1 to 75 years, or leave it blank for all years.')).toBeInTheDocument()
+    expect(screen.getByText('Enter a name.')).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('includes a mortgage and previews when it’s paid off', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    const fetchMock = vi.fn().mockImplementation(async () => jsonResponse(exampleProjection))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    addSessionItem('Savings')
+    await screen.findByText('Savings')
+    fireEvent.change(screen.getByLabelText(/saving years/i), { target: { value: '10' } })
+    fireEvent.click(screen.getByLabelText('Include a mortgage'))
+    fireEvent.change(screen.getByLabelText('Left to pay'), { target: { value: '250,000' } })
+    fireEvent.change(screen.getByLabelText('APR (%)'), { target: { value: '6.5' } })
+    fireEvent.change(screen.getByLabelText('Monthly payment'), { target: { value: '1,800' } })
+
+    expect(screen.getByText('At this payment it’s paid off in about 22 years, so savings cover 12 years of payments.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(requestBodyAt(fetchMock, 0).mortgage).toEqual({ balanceCents: 25000000, annualRateBasisPoints: 650, monthlyPaymentCents: 180000 })
+  })
+
+  it('explains when a mortgage payment doesn’t cover the interest', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    addSessionItem('Savings')
+    await screen.findByText('Savings')
+    fireEvent.click(screen.getByLabelText('Include a mortgage'))
+    fireEvent.change(screen.getByLabelText('Left to pay'), { target: { value: '250,000' } })
+    fireEvent.change(screen.getByLabelText('APR (%)'), { target: { value: '6.5' } })
+    fireEvent.change(screen.getByLabelText('Monthly payment'), { target: { value: '1,000' } })
+    fireEvent.click(screen.getByRole('button', { name: /calculate projection/i }))
+
+    expect(await screen.findByText('The payment needs to be more than the monthly interest ($1,354.17).')).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('remembers itemized expenses and the mortgage in this browser', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+
+    const firstVisit = render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Itemize expenses' }))
+    fireEvent.change(screen.getByLabelText('Travel per year'), { target: { value: '9,000' } })
+    fireEvent.click(screen.getByLabelText('Include a mortgage'))
+    fireEvent.change(screen.getByLabelText('Left to pay'), { target: { value: '120,000' } })
+    firstVisit.unmount()
+
+    render(<App />)
+    expect(screen.getByLabelText('Travel per year')).toHaveValue('9,000')
+    expect(screen.getByLabelText('Include a mortgage')).toBeChecked()
+    expect(screen.getByLabelText('Left to pay')).toHaveValue('120,000')
+  })
+
   it('exports ephemeral browser-owned data without calling the backup API', async () => {
     vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
     const createObjectURL = vi.fn().mockReturnValue('blob:financial-backup')
@@ -953,7 +1061,7 @@ describe('Financial items app', () => {
       inflateAnnualContribution: false,
       sortOrder: 0,
     })
-    expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
+    expect(within(screen.getByRole('complementary')).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
       'Example savings',
       'Example brokerage',
     ])
@@ -983,7 +1091,7 @@ describe('Financial items app', () => {
     ])
     expect(requestBodyAt(fetchMock, 1)).toMatchObject({ name: 'Account C', sortOrder: 1 })
     expect(requestBodyAt(fetchMock, 2)).toMatchObject({ name: 'Account B', sortOrder: 2 })
-    expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
+    expect(within(screen.getByRole('complementary')).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
       'Account A',
       'Account C',
       'Account B',
@@ -1016,7 +1124,7 @@ describe('Financial items app', () => {
     ).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledTimes(4)
     expect(fetchMock).toHaveBeenLastCalledWith('/api/financial-items', undefined)
-    expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
+    expect(within(screen.getByRole('complementary')).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
       'Account A',
       'Account B',
       'Account C',

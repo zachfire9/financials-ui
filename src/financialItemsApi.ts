@@ -40,6 +40,8 @@ export type ProjectionRequest = {
   annualWithdrawalInflationRateBasisPoints?: number
   people?: ProjectionPerson[]
   gapAnnualWithdrawalCents?: number
+  expenses?: ProjectionExpense[]
+  mortgage?: ProjectionMortgage
   items?: Array<FinancialItemPayload & { id?: string }>
 }
 
@@ -69,6 +71,36 @@ export type ProjectedItem = {
   yearlyBalances: YearlyBalance[]
 }
 
+// One category of retirement spending, per year in today's dollars.
+export type ProjectionExpense = {
+  id?: string
+  name: string
+  annualAmountCents: number
+  inflationRateBasisPoints?: number
+  // Only the first N years of drawdown; omitted means every year.
+  years?: number
+}
+
+export type ProjectionMortgage = {
+  balanceCents: number
+  annualRateBasisPoints: number
+  monthlyPaymentCents: number
+}
+
+export type MortgageYear = {
+  year: number
+  balanceCents: number
+  paymentCents: number
+  interestCents: number
+  paidFromSavings: boolean
+}
+
+export type YearlySpending = {
+  year: number
+  expensesCents: number
+  mortgagePaymentCents: number
+}
+
 // A household member with their own retirement year (years from today).
 export type ProjectionPerson = {
   id: string
@@ -81,6 +113,8 @@ export type Projection = {
   savingYears?: number
   transitionYears?: number
   drawdownYears?: number
+  mortgage?: { payoffYear: number; years: MortgageYear[] }
+  spending?: YearlySpending[]
   currency: string
   items: ProjectedItem[]
   totals: YearlyBalance[]

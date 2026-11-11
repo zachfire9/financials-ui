@@ -4,7 +4,9 @@
 // data is corrupt, the app behaves as if nothing was saved.
 
 import type { FinancialItem } from './financialItemsApi'
+import type { ExpenseForm } from './expenses'
 import type { PersonForm } from './household'
+import type { MortgageForm } from './mortgage'
 import { importedItemProblems } from './itemValidation'
 
 export const savedSessionKey = 'financials.session.v1'
@@ -18,6 +20,11 @@ export type SavedProjectionForm = {
   householdPlan?: boolean
   people?: PersonForm[]
   gapWithdrawal?: string
+  // Added with itemized expenses and the mortgage.
+  itemizeExpenses?: boolean
+  expenses?: ExpenseForm[]
+  mortgageEnabled?: boolean
+  mortgage?: MortgageForm
 }
 
 export type SavedSession = {
@@ -61,6 +68,10 @@ export function loadSavedSession(): SavedSession | null {
             householdPlan: typeof form.householdPlan === 'boolean' ? form.householdPlan : undefined,
             people: Array.isArray(form.people) ? form.people : undefined,
             gapWithdrawal: typeof form.gapWithdrawal === 'string' ? form.gapWithdrawal : undefined,
+            itemizeExpenses: typeof form.itemizeExpenses === 'boolean' ? form.itemizeExpenses : undefined,
+            expenses: Array.isArray(form.expenses) ? form.expenses : undefined,
+            mortgageEnabled: typeof form.mortgageEnabled === 'boolean' ? form.mortgageEnabled : undefined,
+            mortgage: form.mortgage && typeof form.mortgage === 'object' ? form.mortgage : undefined,
           }
         : null
     if (!projectionForm) {
