@@ -705,6 +705,44 @@ describe('Financial items app', () => {
     expect(requestBodyAt(fetchMock, 0).mortgage).toEqual({ balanceCents: 25000000, annualRateBasisPoints: 650, monthlyPaymentCents: 180000 })
   })
 
+  it('shows the mortgage next to retirement spending instead of asking for it again', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+
+    render(<App />)
+    fireEvent.change(screen.getByLabelText(/saving years/i), { target: { value: '10' } })
+    fireEvent.click(screen.getByLabelText('Include a mortgage'))
+    fireEvent.change(screen.getByLabelText('Left to pay'), { target: { value: '250,000' } })
+    fireEvent.change(screen.getByLabelText('APR (%)'), { target: { value: '6.5' } })
+    fireEvent.change(screen.getByLabelText('Monthly payment'), { target: { value: '1,800' } })
+
+    expect(screen.getByText(/Plus your mortgage payment until year 22\./)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Itemize expenses' }))
+    const mortgageRow = screen.getByRole('group', { name: 'Mortgage, added automatically' })
+    expect(mortgageRow).toHaveTextContent('$21,600 a year')
+    expect(mortgageRow).toHaveTextContent('Added automatically until it’s paid off in year 22.')
+    expect(screen.getByText(/a year in today’s dollars, plus your mortgage/)).toBeInTheDocument()
+    expect(screen.getByText(/put only property tax, insurance and upkeep under Housing/)).toBeInTheDocument()
+  })
+
+  it('says nothing is added when the mortgage is paid off before retirement', async () => {
+    vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
+    vi.stubGlobal('fetch', vi.fn())
+
+    render(<App />)
+    fireEvent.change(screen.getByLabelText(/saving years/i), { target: { value: '30' } })
+    fireEvent.click(screen.getByLabelText('Include a mortgage'))
+    fireEvent.change(screen.getByLabelText('Left to pay'), { target: { value: '250,000' } })
+    fireEvent.change(screen.getByLabelText('APR (%)'), { target: { value: '6.5' } })
+    fireEvent.change(screen.getByLabelText('Monthly payment'), { target: { value: '1,800' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Itemize expenses' }))
+
+    expect(screen.getByRole('group', { name: 'Mortgage, added automatically' })).toHaveTextContent(
+      'Paid off in year 22, before retirement, so nothing is added.',
+    )
+  })
+
   it('explains when a mortgage payment doesn’t cover the interest', async () => {
     vi.stubEnv('VITE_FINANCIALS_SESSION_MODE', 'ephemeral')
     const fetchMock = vi.fn()
