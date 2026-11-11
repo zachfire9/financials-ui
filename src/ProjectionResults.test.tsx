@@ -362,6 +362,105 @@ describe('ProjectionResults', () => {
     expect(within(screen.getByRole('table')).getByRole('columnheader', { name: 'Mortgage owed' })).toBeInTheDocument()
   })
 
+  it('charts each itemized expense per year, with the mortgage on top', () => {
+    const withExpenses: Projection = {
+      ...projectionWith(
+        [
+          {
+            id: 'a',
+            name: 'Savings',
+            balances: [
+              year(0, 'starting', 500000),
+              year(1, 'saving', 500000),
+              year(2, 'drawdown', 480000, { withdrawalCents: 20000 }),
+              year(3, 'drawdown', 460000, { withdrawalCents: 21000 }),
+            ],
+          },
+        ],
+        1,
+        2,
+      ),
+      spending: [
+        { year: 1, expensesCents: 0, mortgagePaymentCents: 0 },
+        {
+          year: 2,
+          expensesCents: 15000,
+          mortgagePaymentCents: 5000,
+          expenses: [
+            { id: 'food', name: 'Food', amountCents: 10000 },
+            { id: 'travel', name: 'Travel', amountCents: 5000 },
+          ],
+        },
+        { year: 3, expensesCents: 11000, mortgagePaymentCents: 0, expenses: [{ id: 'food', name: 'Food', amountCents: 11000 }] },
+      ],
+    }
+    const { container } = render(<ProjectionResults projection={withExpenses} colorFor={colorFor} />)
+
+    const chart = screen.getByRole('figure', { name: 'Retirement expenses' })
+    expect(chart).toHaveTextContent('$200 in year 2, $110 by year 3.')
+    const legend = within(chart).getByRole('list', { name: 'Expenses' })
+    expect(within(legend).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Food', 'Travel', 'Mortgage'])
+    // Bars only in retirement years: Food, Travel and the mortgage, then Food alone.
+    expect(container.querySelectorAll('.expenses-chart .bar')).toHaveLength(2)
+    expect(container.querySelectorAll('.expenses-chart .bar')[0].querySelectorAll('path')).toHaveLength(3)
+
+    const plot = within(chart).getByRole('group')
+    fireEvent.keyDown(plot, { key: 'Home' })
+    const tooltip = container.querySelector('.expenses-chart .chart-tooltip') as HTMLElement
+    expect(tooltip).toHaveTextContent('Year 2')
+    expect(tooltip).toHaveTextContent('Food$100')
+    expect(tooltip).toHaveTextContent('Travel$50')
+    expect(tooltip).toHaveTextContent('Mortgage$50')
+    expect(tooltip).toHaveTextContent('Total$200')
+    fireEvent.keyDown(plot, { key: 'ArrowRight' })
+    expect(tooltip).toHaveTextContent('Year 3')
+    expect(tooltip).not.toHaveTextContent('Travel')
+  })
+
+  it('keeps expenses in the order entered when one starts later', () => {
+    const projection: Projection = {
+      ...projectionWith(
+        [{ id: 'a', name: 'Savings', balances: [year(0, 'starting', 100000), year(1, 'drawdown', 99000), year(2, 'drawdown', 98000)] }],
+        0,
+        2,
+      ),
+      spending: [
+        { year: 1, expensesCents: 200, mortgagePaymentCents: 0, expenses: [{ id: 'housing', name: 'Housing', amountCents: 100 }, { id: 'other', name: 'Other', amountCents: 100 }] },
+        {
+          year: 2,
+          expensesCents: 300,
+          mortgagePaymentCents: 0,
+          expenses: [
+            { id: 'housing', name: 'Housing', amountCents: 100 },
+            { id: 'medicare', name: 'Medicare', amountCents: 100 },
+            { id: 'other', name: 'Other', amountCents: 100 },
+          ],
+        },
+      ],
+    }
+    render(<ProjectionResults projection={projection} colorFor={colorFor} />)
+    const legend = within(screen.getByRole('figure', { name: 'Retirement expenses' })).getByRole('list', { name: 'Expenses' })
+    expect(within(legend).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Housing', 'Medicare', 'Other'])
+  })
+
+  it('folds expenses past the seventh into Everything else', () => {
+    const expenses = Array.from({ length: 9 }, (_, index) => ({ id: `e${index}`, name: `Expense ${index + 1}`, amountCents: 100 }))
+    const projection: Projection = {
+      ...projectionWith([{ id: 'a', name: 'Savings', balances: [year(0, 'starting', 100000), year(1, 'drawdown', 99100, { withdrawalCents: 900 })] }], 0, 1),
+      spending: [{ year: 1, expensesCents: 900, mortgagePaymentCents: 0, expenses }],
+    }
+    render(<ProjectionResults projection={projection} colorFor={colorFor} />)
+    const legend = within(screen.getByRole('figure', { name: 'Retirement expenses' })).getByRole('list', { name: 'Expenses' })
+    const names = within(legend).getAllByRole('listitem').map((item) => item.textContent)
+    expect(names).toHaveLength(8)
+    expect(names.at(-1)).toBe('Everything else')
+  })
+
+  it('leaves the expenses chart out when expenses aren’t itemized', () => {
+    render(<ProjectionResults projection={fundedProjection} colorFor={colorFor} />)
+    expect(screen.queryByRole('figure', { name: 'Retirement expenses' })).not.toBeInTheDocument()
+  })
+
   it('leaves the mortgage chart out without a mortgage', () => {
     render(<ProjectionResults projection={projectionWith([{ id: 'a', name: 'Savings', balances: [year(0, 'starting', 100), year(1, 'saving', 110)] }], 1, 0)} colorFor={colorFor} />)
     expect(screen.queryByRole('figure', { name: 'Mortgage' })).not.toBeInTheDocument()

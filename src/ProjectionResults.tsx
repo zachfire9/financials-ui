@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BalanceChart } from './charts/BalanceChart'
+import { ExpensesChart } from './charts/ExpensesChart'
 import { FlowsChart } from './charts/FlowsChart'
 import { MortgageChart } from './charts/MortgageChart'
 import type { Projection, ProjectionPerson } from './financialItemsApi'
@@ -94,6 +95,7 @@ export function ProjectionResults({ projection, colorFor, people = null }: Proje
 
       <BalanceChart projection={projection} colorFor={colorFor} stillWorkingName={stillWorking ? stillWorkingName : null} />
       <FlowsChart projection={projection} />
+      <ExpensesChart projection={projection} />
       <MortgageChart projection={projection} />
 
       <section className="yearly-table">
