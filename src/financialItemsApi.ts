@@ -97,10 +97,20 @@ export type MortgageYear = {
   paidFromSavings: boolean
 }
 
+// One itemized expense's planned spending in a year, inflation included.
+export type ExpenseAmount = {
+  id?: string
+  name: string
+  amountCents: number
+}
+
 export type YearlySpending = {
   year: number
   expensesCents: number
   mortgagePaymentCents: number
+  // Each itemized expense that applies this year, in the order entered.
+  // Missing when expenses aren't itemized, or from an older API.
+  expenses?: ExpenseAmount[]
 }
 
 // A household member with their own retirement year (years from today).

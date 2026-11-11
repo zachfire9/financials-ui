@@ -995,6 +995,12 @@ input[aria-invalid='true'] {
   width: 10px;
 }
 
+/* The mortgage in the expenses chart: striped, matching its bar pattern, so
+   it reads apart from the solid expense colors. */
+.legend-swatch-mortgage {
+  background: repeating-linear-gradient(45deg, #a8611c 0 2px, #ecdccd 2px 4px);
+}
+
 .legend-line {
   border-radius: 1px;
   display: block;
