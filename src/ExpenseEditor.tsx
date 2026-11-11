@@ -40,7 +40,8 @@ export function ExpenseEditor({
         <span>Per year</span>
         <span>Inflation (%)</span>
         <span>Years of retirement</span>
-        <span />
+        {/* Invisible, so this column is as wide as the Remove buttons below. */}
+        <span className="expense-heading-spacer">Remove</span>
       </div>
       {expenses.map((expense, index) => {
         const rowErrors = errors[expense.id] ?? {}
