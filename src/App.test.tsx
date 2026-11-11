@@ -680,7 +680,7 @@ describe('Financial items app', () => {
 
     expect(screen.getByLabelText('Travel: last year of retirement')).toHaveAttribute('placeholder', '30')
     fireEvent.change(screen.getByLabelText(/drawdown years/i), { target: { value: '' } })
-    expect(screen.getByLabelText('Travel: last year of retirement')).toHaveAttribute('placeholder', 'End')
+    expect(screen.getByLabelText('Travel: last year of retirement')).not.toHaveAttribute('placeholder')
   })
 
   it('checks each expense before calculating', async () => {

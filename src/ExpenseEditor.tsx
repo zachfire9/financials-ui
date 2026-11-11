@@ -8,7 +8,7 @@ type ExpenseEditorProps = {
   currency: string
   inflationPlaceholder: string
   // The plan's number of retirement years, shown as the default last year of
-  // a range. Null when it isn't a valid number yet.
+  // a range. Null when it isn't a valid number yet (the box is left blank).
   lastYear?: number | null
   onChange: (id: string, field: ExpenseField, value: string) => void
   onAdd: () => void
@@ -31,7 +31,8 @@ export function ExpenseEditor({
   onRemove,
   mortgage = null,
 }: ExpenseEditorProps) {
-  const lastYearPlaceholder = lastYear && lastYear > 0 ? String(lastYear) : 'End'
+  // Blank until the plan has a valid number of retirement years.
+  const lastYearPlaceholder = lastYear && lastYear > 0 ? String(lastYear) : undefined
   return (
     <div className="expense-editor">
       <div className="expense-row expense-headings" aria-hidden="true">
