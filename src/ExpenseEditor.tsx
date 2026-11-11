@@ -35,6 +35,11 @@ export function ExpenseEditor({
   const lastYearPlaceholder = lastYear && lastYear > 0 ? String(lastYear) : undefined
   return (
     <div className="expense-editor">
+      <p className="field-help expense-intro">
+        Leave inflation blank to use the plan’s rate. Year 1 is your first year of retirement: leave the years blank for all of
+        retirement, or set a range, like 1 to 4 for health insurance before Medicare or 25 onward for long-term care.
+        {mortgage ? ' Your mortgage payment is added automatically, so put only property tax, insurance and upkeep under Housing.' : ''}
+      </p>
       <div className="expense-row expense-headings" aria-hidden="true">
         <span>Expense</span>
         <span>Per year</span>
@@ -98,7 +103,10 @@ export function ExpenseEditor({
         </div>
       ) : null}
       <div className="expense-footer">
-        <button type="button" className="text-button" onClick={onAdd} disabled={expenses.length >= maximumExpenses}>
+        <button type="button" className="outline-button" onClick={onAdd} disabled={expenses.length >= maximumExpenses}>
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12">
+            <path d="M6 1.5v9M1.5 6h9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
           Add expense
         </button>
         {hasExpenseRanges(expenses) ? (
@@ -113,11 +121,6 @@ export function ExpenseEditor({
           </span>
         )}
       </div>
-      <p className="field-help">
-        Leave inflation blank to use the plan’s rate. Year 1 is your first year of retirement: leave the years blank for all of
-        retirement, or set a range, like 1 to 4 for health insurance before Medicare or 25 onward for long-term care.
-        {mortgage ? ' Your mortgage payment is added automatically, so put only property tax, insurance and upkeep under Housing.' : ''}
-      </p>
     </div>
   )
 }

@@ -388,7 +388,7 @@ function App() {
                 ? 'Your expenses below in the first year of retirement; it changes as they start and stop.'
                 : 'The total of your expenses below.'}
             </span>
-            <button type="button" className="text-button" onClick={toggleItemizeExpenses}>
+            <button type="button" className="outline-button" onClick={toggleItemizeExpenses}>
               Use one amount instead
             </button>
           </div>
@@ -413,7 +413,10 @@ function App() {
             {mortgageExpenseNote ? ` ${mortgageExpenseNote.withdrawalHelp}` : ''}
           </span>
           <FieldError id="annual-withdrawal-error" message={projectionFieldErrors.annualWithdrawal} />
-          <button type="button" className="text-button" onClick={toggleItemizeExpenses}>
+          <button type="button" className="outline-button" onClick={toggleItemizeExpenses}>
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14">
+              <path d="M1.5 3h11M1.5 7h11M1.5 11h7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
             Itemize expenses
           </button>
         </div>
