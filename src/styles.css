@@ -656,8 +656,8 @@ input[aria-invalid='true'] {
 .outline-button {
   align-items: center;
   align-self: flex-start;
-  background: var(--surface);
-  border: 1px solid var(--input-border);
+  background: #dcebe8;
+  border: 1px solid #9fc4bf;
   border-radius: 8px;
   color: var(--brand);
   display: inline-flex;
@@ -669,7 +669,7 @@ input[aria-invalid='true'] {
 }
 
 .outline-button:hover:not(:disabled) {
-  background: #eef4f2;
+  background: #c9e0dc;
   border-color: var(--brand);
 }
 
