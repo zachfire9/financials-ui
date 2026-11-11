@@ -420,6 +420,7 @@ input[aria-invalid='true'] {
 
 /* The account form lives on the dark sidebar. */
 .item-form {
+  scroll-margin-top: 1rem;
   border-top: 1px solid var(--sidebar-rule);
   display: grid;
   gap: 0.95rem;

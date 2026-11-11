@@ -91,6 +91,11 @@ function App() {
   const [items, setItems] = useState<FinancialItem[]>(() => [...(restoredSession?.items ?? [])].sort(compareFinancialItems))
   const [form, setForm] = useState<FormState>(emptyForm)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  // Bumped by each Edit click, so the form scrolls into view even when the
+  // same account is edited twice.
+  const [editScrollRequest, setEditScrollRequest] = useState(0)
+  const itemFormRef = useRef<HTMLFormElement>(null)
+  const itemNameInputRef = useRef<HTMLInputElement>(null)
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -576,9 +581,19 @@ function App() {
     }
   }
 
+  // Bring the account form into view when Edit is clicked, with the cursor
+  // in its first field, so it's clear where the changes go.
+  useEffect(() => {
+    if (editScrollRequest === 0) return
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    itemFormRef.current?.scrollIntoView?.({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
+    itemNameInputRef.current?.focus({ preventScroll: true })
+  }, [editScrollRequest])
+
   function startEditing(item: FinancialItem) {
     setItemFieldErrors({})
     setEditingItemId(item.id)
+    setEditScrollRequest((request) => request + 1)
     setForm({
       name: item.name,
       amount: centsToDollarsInput(item.amountCents),
@@ -818,12 +833,13 @@ function App() {
           {items.length > 1 ? <p className="sidebar-hint">Drag accounts to reorder them.</p> : null}
         </section>
 
-        <form className="item-form" onSubmit={handleSubmit} aria-labelledby="item-form-heading">
+        <form className="item-form" ref={itemFormRef} onSubmit={handleSubmit} aria-labelledby="item-form-heading">
           <h2 id="item-form-heading">{editingItem ? `Edit ${editingItem.name}` : 'Add an account'}</h2>
 
           <label>
             Name
             <input
+              ref={itemNameInputRef}
               value={form.name}
               onChange={(event) => setForm({ ...form, name: event.target.value })}
               placeholder="Example: Roth IRA"
