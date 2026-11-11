@@ -882,6 +882,25 @@ describe('Financial items app', () => {
     expect(screen.queryByLabelText(/sort order/i)).not.toBeInTheDocument()
   })
 
+  it('scrolls the account form into view and focuses its name when Edit is clicked', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse([secondItem])))
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+
+    render(<App />)
+    const edit = await screen.findByRole('button', { name: /edit example savings/i })
+    fireEvent.click(edit)
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrollIntoView.mock.contexts[0]).toBe(screen.getByRole('form', { name: /edit example savings/i }))
+    expect(screen.getByLabelText(/^name/i)).toHaveFocus()
+
+    // A second click on the same account scrolls again.
+    fireEvent.click(edit)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+  })
+
   it('creates a financial item with the form payload expected by the API', async () => {
     const createdItem = { ...exampleItem, id: 'item_000003', name: 'Example emergency fund', sortOrder: 0 }
     const fetchMock = vi
